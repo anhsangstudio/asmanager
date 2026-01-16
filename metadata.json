@@ -1,0 +1,8 @@
+{
+  "name": "Ánh Sáng Studio",
+  "description": "Comprehensive studio management system with AI-powered expense classification, smart scheduling, and contract automation.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
