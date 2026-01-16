@@ -3,8 +3,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.1';
 import { Service, Transaction, Staff, Contract, Schedule, Customer } from './types';
 
 // Supabase Configuration - Assuming keys are in environment variables
-const SUPABASE_URL = process.env.SUPABASE_URL || '';
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 export const isConfigured = !!SUPABASE_URL && !!SUPABASE_ANON_KEY;
 
