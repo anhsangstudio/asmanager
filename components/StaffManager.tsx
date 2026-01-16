@@ -170,9 +170,9 @@ const StaffManager: React.FC<Props> = ({ staff, setStaff, schedules }) => {
         await syncData('Staff', 'CREATE', newStaff);
       }
       setIsModalOpen(false);
-    } catch (e) {
+    } catch (e: any) {
       console.error("Lỗi đồng bộ nhân sự:", e);
-      alert("Gặp lỗi khi đồng bộ Google Sheets. Vui lòng thử lại.");
+      alert(`Gặp lỗi khi đồng bộ dữ liệu với Supabase Cloud: ${e.message || 'Vui lòng thử lại.'}`);
     } finally {
       setIsSaving(false);
     }
@@ -196,7 +196,7 @@ const StaffManager: React.FC<Props> = ({ staff, setStaff, schedules }) => {
       <div className="flex justify-between items-center bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm">
         <div>
           <h2 className="text-xl font-black text-slate-900 tracking-tight uppercase">Đội ngũ Nhân sự</h2>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Quản lý nhân sự và đồng bộ Google Sheets thời gian thực</p>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Quản lý nhân sự và đồng bộ Cloud thời gian thực</p>
         </div>
         <button 
           onClick={handleOpenAdd}
