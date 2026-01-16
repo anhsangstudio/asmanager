@@ -4,8 +4,8 @@ import { Service, Transaction, Staff, Contract, Schedule, Customer } from './typ
 // =========================
 // Supabase Configuration (Vite/Vercel)
 // =========================
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const SUPABASE_URL = (import.meta as any).env?.VITE_SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
 
 export const isConfigured = !!SUPABASE_URL && !!SUPABASE_ANON_KEY;
 
@@ -282,6 +282,41 @@ export const uploadFile = async (bucket: string, path: string, file: File) => {
 
   const pub = supabase.storage.from(bucket).getPublicUrl(up.data.path);
   return pub?.data?.publicUrl ?? null;
+};
+
+// =========================
+// Service Code Management
+// =========================
+export const checkServiceCodeExists = async (code: string): Promise<boolean> => {
+  if (!supabase) return false;
+  const { data, error } = await supabase
+    .from('services')
+    .select('ma_dv')
+    .eq('ma_dv', code.trim().toUpperCase())
+    .maybeSingle();
+  
+  return !!data;
+};
+
+export const getNextServiceCode = async (): Promise<string> => {
+  if (!supabase) return `DV-${Math.floor(Math.random() * 1000000).toString().padStart(6, '0')}`;
+  
+  const { data, error } = await supabase
+    .from('services')
+    .select('ma_dv')
+    .like('ma_dv', 'DV-%')
+    .order('ma_dv', { ascending: false })
+    .limit(1);
+
+  if (data && data.length > 0) {
+    const lastCode = data[0].ma_dv;
+    const match = lastCode.match(/\d+/);
+    if (match) {
+      const nextNum = parseInt(match[0]) + 1;
+      return `DV-${nextNum.toString().padStart(6, '0')}`;
+    }
+  }
+  return 'DV-000001';
 };
 
 // =========================

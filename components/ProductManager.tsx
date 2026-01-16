@@ -1,11 +1,11 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Package, Plus, X, Trash2, Info, DollarSign, 
   ShieldCheck, AlignLeft, Loader2, CheckCircle2, Percent, AlertTriangle
 } from 'lucide-react';
 import { Service, ServiceType } from '../types';
-import { syncData } from '../apiService';
+import { syncData, checkServiceCodeExists, getNextServiceCode } from '../apiService';
 
 interface Props {
   services: Service[];
@@ -16,10 +16,14 @@ interface Props {
 
 const ProductManager: React.FC<Props> = ({ services, setServices, departments, setDepartments }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingService, setEditingService] = useState<Partial<Service> | null>(null);
+  // @google/genai fix: Added ma_dv_original to tracking state to identify edit mode and avoid TypeScript error
+  const [editingService, setEditingService] = useState<(Partial<Service> & { ma_dv_original?: string }) | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
 
   const initialServiceState: Partial<Service> = {
+    ma_dv: '',
     ten_dv: '',
     nhom_dv: ServiceType.WEDDING_PHOTO,
     chi_tiet_dv: '',
@@ -41,15 +45,11 @@ const ProductManager: React.FC<Props> = ({ services, setServices, departments, s
     chi_phi_khau_hao: 0
   };
 
-  // Real-time Profit Analysis Calculation
   const profitAnalysis = useMemo(() => {
     if (!editingService) return { hoa_hong_tien: 0, tong_chi_phi: 0, loi_nhuan_gop: 0 };
-    
     const don_gia = Number(editingService.don_gia) || 0;
     const hoa_hong_pct = Number(editingService.hoa_hong_pct) || 0;
-    
     const hoa_hong_tien = Math.round(don_gia * (hoa_hong_pct / 100));
-    
     const chiphi_codinh = 
       (Number(editingService.chi_phi_cong_chup) || 0) +
       (Number(editingService.chi_phi_makeup) || 0) +
@@ -63,50 +63,134 @@ const ProductManager: React.FC<Props> = ({ services, setServices, departments, s
       (Number(editingService.chi_phi_bao_bi) || 0) +
       (Number(editingService.chi_phi_giat_phoi) || 0) +
       (Number(editingService.chi_phi_khau_hao) || 0);
-
     const tong_chi_phi = hoa_hong_tien + chiphi_codinh;
     const loi_nhuan_gop = don_gia - tong_chi_phi;
-
     return { hoa_hong_tien, tong_chi_phi, loi_nhuan_gop };
   }, [editingService]);
 
+  // Chuẩn hóa mã dịch vụ khi người dùng nhập
+  const normalizeCode = (val: string) => {
+    return val.trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
+  };
+
+  const handleCodeChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawVal = e.target.value;
+    const cleanCode = normalizeCode(rawVal);
+    
+    setEditingService(prev => prev ? { ...prev, ma_dv: cleanCode } : null);
+    
+    if (cleanCode.length > 2) {
+      setIsValidating(true);
+      const exists = await checkServiceCodeExists(cleanCode);
+      if (exists) {
+        setCodeError("Mã dịch vụ này đã tồn tại trên hệ thống");
+      } else {
+        setCodeError(null);
+      }
+      setIsValidating(false);
+    } else {
+      setCodeError(null);
+    }
+  };
+
   const handleOpenAdd = () => {
     setEditingService(initialServiceState);
+    setCodeError(null);
     setIsModalOpen(true);
   };
 
   const handleOpenEdit = (service: Service) => {
-    setEditingService({ ...service });
+    // @google/genai fix: Added ma_dv_original to distinguish between CREATE and UPDATE actions
+    setEditingService({ ...service, ma_dv_original: service.ma_dv });
+    setCodeError(null);
     setIsModalOpen(true);
   };
 
   const handleSave = async () => {
     if (!editingService?.ten_dv || !editingService?.don_gia) {
-      alert("Vui lòng điền đầy đủ các thông tin bắt buộc (*)");
+      alert("Vui lòng điền đầy đủ Tên dịch vụ và Đơn giá");
+      return;
+    }
+
+    if (codeError) {
+      alert("Mã dịch vụ bị trùng, vui lòng kiểm tra lại");
       return;
     }
 
     setIsSaving(true);
     try {
-      const action = editingService.ma_dv ? 'UPDATE' : 'CREATE';
-      const result = await syncData('services', action, editingService);
+      let finalData = { ...editingService };
+      
+      // Nếu mã dịch vụ trống, tự động sinh mã từ DB
+      if (!finalData.ma_dv) {
+        const autoCode = await getNextServiceCode();
+        finalData.ma_dv = autoCode;
+      }
+
+      // Kiểm tra trùng lần cuối trước khi insert (double-check)
+      if (!editingService.ma_dv_original) { // Chỉ check nếu là tạo mới
+         const stillExists = await checkServiceCodeExists(finalData.ma_dv as string);
+         if (stillExists && !editingService.ma_dv) {
+            // Re-generate if auto-code collided
+            finalData.ma_dv = await getNextServiceCode();
+         } else if (stillExists) {
+            setCodeError("Mã dịch vụ đã tồn tại");
+            setIsSaving(false);
+            return;
+         }
+      }
+
+      const action = editingService.ma_dv_original || services.some(s => s.ma_dv === finalData.ma_dv) ? 'UPDATE' : 'CREATE';
+      
+      // Payload thực tế gửi lên Supabase
+      const payload = {
+        ma_dv: finalData.ma_dv,
+        ten_dv: finalData.ten_dv,
+        nhom_dv: finalData.nhom_dv,
+        don_vi_tinh: finalData.don_vi_tinh,
+        nhan: finalData.nhan,
+        chi_tiet_dv: finalData.chi_tiet_dv,
+        don_gia: finalData.don_gia,
+        hoa_hong_pct: finalData.hoa_hong_pct,
+        chi_phi_cong_chup: finalData.chi_phi_cong_chup,
+        chi_phi_makeup: finalData.chi_phi_makeup,
+        chi_phi_nv_ho_tro: finalData.chi_phi_nv_ho_tro,
+        chi_phi_thu_vay: finalData.chi_phi_thu_vay,
+        chi_phi_photoshop: finalData.chi_phi_photoshop,
+        chi_phi_in_an: finalData.chi_phi_in_an,
+        chi_phi_ship: finalData.chi_phi_ship,
+        chi_phi_an_trua: finalData.chi_phi_an_trua,
+        chi_phi_lam_toc: finalData.chi_phi_lam_toc,
+        chi_phi_bao_bi: finalData.chi_phi_bao_bi,
+        chi_phi_giat_phoi: finalData.chi_phi_giat_phoi,
+        chi_phi_khau_hao: finalData.chi_phi_khau_hao
+      };
+
+      const result = await syncData('services', action, payload);
       
       if (result.success && result.data) {
-        const savedProduct = result.data as Service;
+        const savedProduct = {
+          ...result.data,
+          id: result.data.ma_dv, // Mapping cho các module khác
+          code: result.data.ma_dv,
+          name: result.data.ten_dv,
+          price: result.data.don_gia,
+          type: result.data.nhom_dv,
+          description: result.data.chi_tiet_dv,
+          unit: result.data.don_vi_tinh,
+          label: result.data.nhan
+        };
         
-        // Update local state immediately
         if (action === 'UPDATE') {
           setServices(prev => prev.map(s => s.ma_dv === savedProduct.ma_dv ? savedProduct : s));
         } else {
           setServices(prev => [savedProduct, ...prev]);
         }
-        
         setIsModalOpen(false);
         setEditingService(null);
       }
     } catch (e: any) {
-      console.error("[Supabase Sync Error]", e);
-      alert(`Lỗi đồng bộ Supabase: ${e.message}`);
+      alert(`Lỗi đồng bộ: ${e.message}`);
     } finally {
       setIsSaving(false);
     }
@@ -142,7 +226,6 @@ const ProductManager: React.FC<Props> = ({ services, setServices, departments, s
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {services.map(s => {
-          // Re-calculate margins for list view
           const chiphi_codinh = 
             (s.chi_phi_cong_chup || 0) + (s.chi_phi_makeup || 0) + (s.chi_phi_nv_ho_tro || 0) + 
             (s.chi_phi_thu_vay || 0) + (s.chi_phi_photoshop || 0) + (s.chi_phi_in_an || 0) + 
@@ -170,7 +253,7 @@ const ProductManager: React.FC<Props> = ({ services, setServices, departments, s
                 <div>
                   <h3 className="text-xl font-black text-slate-900 group-hover:text-blue-600 transition-colors line-clamp-1">{s.ten_dv}</h3>
                   <div className="flex items-center gap-2 mt-1">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">#{s.ma_dv.substring(0, 8)}</span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">#{s.ma_dv}</span>
                     <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
                     <span className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">{s.nhom_dv}</span>
                   </div>
@@ -215,8 +298,8 @@ const ProductManager: React.FC<Props> = ({ services, setServices, departments, s
                   <Package size={28} />
                 </div>
                 <div>
-                  <h3 className="text-2xl font-black text-slate-900">{editingService.ma_dv ? 'Cập nhật Dịch vụ' : 'Thiết lập Dịch vụ mới'}</h3>
-                  <p className="text-sm text-slate-400 font-bold uppercase tracking-widest">Đồng bộ Supabase Real-time</p>
+                  <h3 className="text-2xl font-black text-slate-900">{editingService.ma_dv_original ? 'Cập nhật Dịch vụ' : 'Thiết lập Dịch vụ mới'}</h3>
+                  <p className="text-sm text-slate-400 font-bold uppercase tracking-widest">Mã dịch vụ là khóa chính duy nhất</p>
                 </div>
               </div>
               <button onClick={() => setIsModalOpen(false)} className="w-12 h-12 flex items-center justify-center hover:bg-slate-100 rounded-full text-slate-300 transition-all">
@@ -225,7 +308,6 @@ const ProductManager: React.FC<Props> = ({ services, setServices, departments, s
             </div>
 
             <div className="p-8 overflow-y-auto space-y-10 scrollbar-hide">
-              {/* Section 1: Thông tin cơ bản */}
               <div className="space-y-6">
                 <div className="flex items-center gap-2 text-blue-600">
                   <Info size={18} />
@@ -233,8 +315,23 @@ const ProductManager: React.FC<Props> = ({ services, setServices, departments, s
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-500 uppercase ml-1 tracking-widest">Mã dịch vụ (ma_dv)</label>
-                    <input type="text" className="w-full p-4 bg-slate-100 border border-slate-200 rounded-2xl outline-none font-black text-blue-600" value={editingService.ma_dv || 'Auto-generated'} readOnly />
+                    <label className="text-[10px] font-black text-slate-500 uppercase ml-1 tracking-widest">Mã dịch vụ (ma_dv) *</label>
+                    <div className="relative">
+                      <input 
+                        type="text" 
+                        placeholder="VD: DV-000001"
+                        disabled={!!editingService.ma_dv_original || services.some(s => s.ma_dv === editingService.ma_dv && editingService.ma_dv !== '')}
+                        className={`w-full p-4 border rounded-2xl outline-none font-black transition-all ${codeError ? 'bg-red-50 border-red-300 text-red-600' : 'bg-slate-50 border-slate-200 text-blue-600 focus:ring-2 focus:ring-blue-500'}`}
+                        value={editingService.ma_dv} 
+                        onChange={handleCodeChange}
+                      />
+                      {isValidating && <Loader2 size={16} className="absolute right-4 top-1/2 -translate-y-1/2 animate-spin text-slate-400" />}
+                    </div>
+                    {codeError ? (
+                       <p className="text-[10px] text-red-500 font-bold uppercase ml-1">{codeError}</p>
+                    ) : (
+                       <p className="text-[9px] text-slate-400 italic ml-1">Bỏ trống để hệ thống tự sinh mã. Không thể sửa sau khi lưu.</p>
+                    )}
                   </div>
                   <div className="md:col-span-2 space-y-2">
                     <label className="text-[10px] font-black text-slate-500 uppercase ml-1 tracking-widest">Tên dịch vụ hiển thị *</label>
@@ -271,7 +368,7 @@ const ProductManager: React.FC<Props> = ({ services, setServices, departments, s
                 </div>
               </div>
 
-              {/* Section 2: Cấu trúc chi phí chi tiết */}
+              {/* Section 2: Cấu trúc chi phí */}
               <div className="space-y-6">
                 <div className="flex items-center gap-2 text-purple-600 border-b border-slate-100 pb-4">
                   <ShieldCheck size={18} />
@@ -321,7 +418,7 @@ const ProductManager: React.FC<Props> = ({ services, setServices, departments, s
                 </div>
               </div>
 
-              {/* Section 3: Đơn giá & Phân tích biên LN */}
+              {/* Section 3: Đơn giá */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-6">
                 <div className="space-y-6">
                    <div className="flex items-center gap-2 text-emerald-600">
@@ -374,11 +471,11 @@ const ProductManager: React.FC<Props> = ({ services, setServices, departments, s
               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 font-black text-xs uppercase tracking-widest hover:text-slate-900">Hủy bỏ</button>
               <button 
                 onClick={handleSave}
-                disabled={isSaving}
+                disabled={isSaving || !!codeError || isValidating}
                 className="px-14 py-4 bg-blue-600 text-white font-black uppercase text-xs tracking-widest rounded-[1.25rem] shadow-xl shadow-blue-500/20 active:scale-95 flex items-center justify-center gap-2 disabled:bg-slate-400"
               >
                 {isSaving ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
-                {editingService.ma_dv ? 'Cập nhật Dịch vụ' : 'Lưu Dịch vụ mới'}
+                {editingService.ma_dv_original ? 'Cập nhật Dịch vụ' : 'Lưu Dịch vụ mới'}
               </button>
             </div>
           </div>
