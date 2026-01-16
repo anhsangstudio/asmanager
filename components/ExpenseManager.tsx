@@ -49,6 +49,8 @@ const ExpenseManager: React.FC<Props> = ({
     return financePerms['report'] || { view: true, add: true, edit: true, delete: true, ownOnly: false };
   }, [currentUser, activeSubTab]);
 
+  const canManageCategories = currentUser.username === 'admin' || currentUser.role === 'Giám đốc';
+
   // States cho Quản lý danh mục 2 cấp
   const [categories, setCategories] = useState<CategoryHierarchy>(() => {
     const initial: CategoryHierarchy = {
@@ -320,12 +322,14 @@ const ExpenseManager: React.FC<Props> = ({
                   onChange={e => setFilterText(e.target.value)}
                 />
               </div>
-              <button 
-                onClick={() => setIsCategoryManagerOpen(true)}
-                className="flex items-center gap-2 text-[10px] font-black uppercase bg-white text-slate-600 px-5 py-3 rounded-2xl border border-slate-200 hover:bg-slate-50 transition-all shadow-sm"
-              >
-                <Settings size={16} /> Quản lý danh mục 2 cấp
-              </button>
+              {canManageCategories && (
+                <button 
+                  onClick={() => setIsCategoryManagerOpen(true)}
+                  className="flex items-center gap-2 text-[10px] font-black uppercase bg-white text-slate-600 px-5 py-3 rounded-2xl border border-slate-200 hover:bg-slate-50 transition-all shadow-sm"
+                >
+                  <Settings size={16} /> Quản lý danh mục 2 cấp
+                </button>
+              )}
             </div>
 
             <div className="bg-white border border-slate-200 rounded-[2.5rem] overflow-hidden shadow-sm overflow-x-auto">
@@ -665,7 +669,7 @@ const ExpenseManager: React.FC<Props> = ({
       )}
 
       {/* Category Manager Modal */}
-      {isCategoryManagerOpen && (
+      {isCategoryManagerOpen && canManageCategories && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-md z-[110] flex items-center justify-center p-4">
           <div className="bg-white rounded-[3rem] w-full max-w-2xl p-10 shadow-2xl animate-in zoom-in-95 duration-200 border border-slate-100 flex flex-col max-h-[90vh]">
             <div className="flex justify-between items-center mb-8 bg-white shrink-0">

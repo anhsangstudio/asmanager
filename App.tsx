@@ -266,6 +266,7 @@ const App: React.FC = () => {
   }
 
   const currentTabInfo = allNavItems.find(i => i.id === activeTab);
+  const canUseAI = currentUser?.username === 'admin' || currentUser?.role === 'Giám đốc';
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden font-sans flex-col md:flex-row">
@@ -387,11 +388,13 @@ const App: React.FC = () => {
           </div>
         )}
 
-        <button onClick={() => setShowAssistant(!showAssistant)} className="fixed bottom-24 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all z-40 md:bottom-8 md:right-8">
-          <MessageSquare />
-        </button>
+        {canUseAI && (
+          <button onClick={() => setShowAssistant(!showAssistant)} className="fixed bottom-24 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all z-40 md:bottom-8 md:right-8">
+            <MessageSquare />
+          </button>
+        )}
 
-        {showAssistant && (
+        {showAssistant && canUseAI && (
           <div className="fixed inset-0 bg-white z-[150] md:inset-auto md:bottom-24 md:right-8 md:w-[400px] md:h-[550px] md:rounded-[2.5rem] md:shadow-2xl overflow-hidden md:border md:border-slate-200 animate-in">
             <AIAssistant onClose={() => setShowAssistant(false)} context={{ contracts, transactions, staff, services }} />
           </div>

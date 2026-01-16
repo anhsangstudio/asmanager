@@ -6,7 +6,7 @@ import {
   ChevronDown, ChevronRight, CheckSquare, Square, UserCheck, Calendar, Info, Clock, Tag, Mail,
   Loader2
 } from 'lucide-react';
-import { Staff, Schedule, ModulePermission } from '../types';
+import { Staff, Schedule, ModulePermission, STAFF_ROLES } from '../types';
 import { syncData } from '../apiService';
 
 interface Props {
@@ -61,7 +61,7 @@ const StaffManager: React.FC<Props> = ({ staff, setStaff, schedules }) => {
   const initialForm: Partial<Staff> = {
     code: '',
     name: '',
-    role: '',
+    role: STAFF_ROLES[0],
     phone: '',
     email: '',
     baseSalary: 0,
@@ -301,7 +301,10 @@ const StaffManager: React.FC<Props> = ({ staff, setStaff, schedules }) => {
                        </div>
                        <div className="space-y-1.5">
                           <label className="text-[10px] font-black text-slate-500 uppercase ml-1">Vị trí *</label>
-                          <input type="text" className="w-full p-4 bg-white border border-slate-200 rounded-2xl outline-none font-bold text-blue-600" value={form.role} onChange={e => setForm({...form, role: e.target.value})} />
+                          <select className="w-full p-4 bg-white border border-slate-200 rounded-2xl outline-none font-bold text-blue-600 cursor-pointer appearance-none" value={form.role} onChange={e => setForm({...form, role: e.target.value})}>
+                             <option value="">-- Chọn vị trí --</option>
+                             {STAFF_ROLES.map(role => <option key={role} value={role}>{role}</option>)}
+                          </select>
                        </div>
                     </div>
 

@@ -37,6 +37,16 @@ export const DEFAULT_DEPARTMENTS = [
   'Sales/Marketing'
 ];
 
+export const STAFF_ROLES = [
+  'Giám đốc',
+  'Tư Vấn',
+  'Marketing',
+  'Thợ Make',
+  'Thợ Chụp',
+  'Phòng Váy',
+  'Hỗ Trợ'
+];
+
 export enum TransactionType {
   INCOME = 'Thu',
   EXPENSE = 'Chi'
