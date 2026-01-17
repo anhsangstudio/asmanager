@@ -43,7 +43,7 @@ const ExpenseManager: React.FC<Props> = ({
   const [isSaving, setIsSaving] = useState(false);
   const billInputRef = useRef<HTMLInputElement>(null);
   
-  // Kiểm tra quyền Module hiện tại
+  // Kiểm tra quyền Module hiện tại (CHỈ DÙNG CHO VIỆC HIỂN THỊ DANH SÁCH/TAB)
   const currentModulePerm = useMemo(() => {
     const financePerms = currentUser.permissions['finance'] || {};
     if (activeSubTab === 'income') return financePerms['income'] || { view: true, add: true, edit: true, delete: true, ownOnly: false };
@@ -142,9 +142,14 @@ const ExpenseManager: React.FC<Props> = ({
   }, [expenseTransactions, reportYear]);
 
   const handleOpenAdd = (type: TransactionType) => {
-    // Kiểm tra quyền thêm
-    if (!currentModulePerm.add) {
-      alert("Bạn không có quyền thực hiện chức năng này.");
+    // FIX: Kiểm tra quyền dựa trên LOẠI GIAO DỊCH muốn thêm, không phải tab đang đứng
+    const financePerms = currentUser.permissions['finance'] || {};
+    const relevantPerm = type === TransactionType.INCOME 
+      ? (financePerms['income'] || { view: true, add: true, edit: true, delete: true, ownOnly: false })
+      : (financePerms['expense'] || { view: true, add: true, edit: true, delete: true, ownOnly: false });
+
+    if (!relevantPerm.add) {
+      alert(`Bạn không có quyền thêm giao dịch ${type === TransactionType.INCOME ? 'Thu' : 'Chi'}.`);
       return;
     }
 
@@ -164,6 +169,7 @@ const ExpenseManager: React.FC<Props> = ({
 
   const handleOpenEdit = (tx: Transaction) => {
     // Nếu ownOnly được bật, không cho sửa giao dịch người khác
+    // Lưu ý: ownOnly check theo tab hiện tại vì danh sách đang hiển thị thuộc tab đó
     if (currentModulePerm.ownOnly && tx.staffId !== currentUser.id) {
        alert("Hệ thống được cấu hình chỉ xem/sửa dữ liệu cá nhân.");
        return;
@@ -203,6 +209,9 @@ const ExpenseManager: React.FC<Props> = ({
     }
 
     setIsSaving(true);
+    // Backup state cũ để rollback nếu lỗi
+    const previousTransactions = [...transactions];
+
     try {
       if (editingTxId) {
         const updatedTx = { ...formData, id: editingTxId } as Transaction;
@@ -218,7 +227,10 @@ const ExpenseManager: React.FC<Props> = ({
       }
       setIsModalOpen(false);
     } catch (e: any) {
-      alert(`Lỗi lưu dữ liệu: ${e.message}`);
+      console.error("Save error:", e);
+      alert(`Lỗi lưu dữ liệu lên hệ thống: ${e.message}`);
+      // Rollback lại state nếu API lỗi
+      setTransactions(previousTransactions);
     } finally {
       setIsSaving(false);
     }
@@ -233,12 +245,14 @@ const ExpenseManager: React.FC<Props> = ({
 
     if (window.confirm("Bạn có chắc chắn muốn xóa giao dịch này?")) {
       setIsSaving(true);
+      const previousTransactions = [...transactions];
       try {
+        setTransactions(prev => prev.filter(t => t.id !== editingTxId)); // Optimistic delete
         await syncData('Transactions', 'DELETE', { id: editingTxId });
-        setTransactions(prev => prev.filter(t => t.id !== editingTxId));
         setIsModalOpen(false);
       } catch (e: any) {
         alert(`Lỗi xóa dữ liệu: ${e.message}`);
+        setTransactions(previousTransactions); // Rollback
       } finally {
         setIsSaving(false);
       }
