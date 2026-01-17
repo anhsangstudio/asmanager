@@ -242,12 +242,12 @@ const scheduleFromDb = (r: any): Schedule => ({
 // -------- Transaction --------
 const transactionToDb = (t: Partial<Transaction>) => ({
   id: t.id,
-  type: t.type, // ✅ FIXED: use 'type' to match db_schema.sql
+  transaction_type: t.type, // ✅ FIXED: matches DB 'transaction_type'
   main_category: t.mainCategory ?? '',
   category: t.category ?? '',
   amount: t.amount ?? 0,
   description: t.description ?? '',
-  date: asDateOnly(t.date), // ✅ FIXED: use 'date' to match db_schema.sql
+  transaction_date: asDateOnly(t.date), // ✅ FIXED: matches DB 'transaction_date'
 
   contract_id: t.contractId || null, 
   vendor: t.vendor ?? null,
@@ -257,12 +257,12 @@ const transactionToDb = (t: Partial<Transaction>) => ({
 
 const transactionFromDb = (r: any): Transaction => ({
   id: r.id,
-  type: r.type, // ✅ FIXED
+  type: r.transaction_type, // ✅ FIXED
   mainCategory: r.main_category ?? '',
   category: r.category ?? '',
   amount: Number(r.amount ?? 0),
   description: r.description ?? '',
-  date: r.date ? String(r.date) : '', // ✅ FIXED
+  date: r.transaction_date ? String(r.transaction_date) : '', // ✅ FIXED
   contractId: r.contract_id ?? undefined,
   vendor: r.vendor ?? undefined,
   staffId: r.staff_id ?? undefined,
@@ -370,7 +370,7 @@ export const fetchBootstrapData = async () => {
     supabase.from('contracts').select('*').order('contract_date', { ascending: false }),
     supabase.from('contract_items').select('*'),
     supabase.from('schedules').select('*').order('schedule_date', { ascending: false }),
-    supabase.from('transactions').select('*').order('date', { ascending: false }), // Fixed order column to 'date'
+    supabase.from('transactions').select('*').order('transaction_date', { ascending: false }), // Fixed order column to 'transaction_date'
   ]);
 
   const err =
