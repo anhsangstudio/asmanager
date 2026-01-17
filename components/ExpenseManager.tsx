@@ -9,6 +9,7 @@ import {
 import { Transaction, TransactionType, ExpenseCategory, Contract, Customer, Staff, ModulePermission } from '../types';
 import { classifyExpense } from '../geminiService';
 import { BarChart as ReBarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, LineChart, Line, Legend } from 'recharts';
+import { syncData } from '../apiService';
 
 interface Props {
   transactions: Transaction[];
@@ -39,6 +40,7 @@ const ExpenseManager: React.FC<Props> = ({
   const [loadingAI, setLoadingAI] = useState(false);
   const [filterText, setFilterText] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const billInputRef = useRef<HTMLInputElement>(null);
   
   // Kiểm tra quyền Module hiện tại
@@ -194,25 +196,35 @@ const ExpenseManager: React.FC<Props> = ({
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData.description || !formData.amount) {
       alert("Vui lòng điền đủ thông tin giao dịch");
       return;
     }
 
-    if (editingTxId) {
-      setTransactions(prev => prev.map(t => t.id === editingTxId ? { ...t, ...formData as Transaction } : t));
-    } else {
-      const newTx: Transaction = {
-        id: Math.random().toString(36).substr(2, 9),
-        ...formData as Transaction
-      };
-      setTransactions([newTx, ...transactions]);
+    setIsSaving(true);
+    try {
+      if (editingTxId) {
+        const updatedTx = { ...formData, id: editingTxId } as Transaction;
+        setTransactions(prev => prev.map(t => t.id === editingTxId ? updatedTx : t));
+        await syncData('Transactions', 'UPDATE', updatedTx);
+      } else {
+        const newTx: Transaction = {
+          id: Math.random().toString(36).substr(2, 9),
+          ...formData as Transaction
+        };
+        setTransactions([newTx, ...transactions]);
+        await syncData('Transactions', 'CREATE', newTx);
+      }
+      setIsModalOpen(false);
+    } catch (e: any) {
+      alert(`Lỗi lưu dữ liệu: ${e.message}`);
+    } finally {
+      setIsSaving(false);
     }
-    setIsModalOpen(false);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!editingTxId) return;
     if (!currentModulePerm.delete) {
       alert("Bạn không có quyền xóa.");
@@ -220,8 +232,16 @@ const ExpenseManager: React.FC<Props> = ({
     }
 
     if (window.confirm("Bạn có chắc chắn muốn xóa giao dịch này?")) {
-      setTransactions(prev => prev.filter(t => t.id !== editingTxId));
-      setIsModalOpen(false);
+      setIsSaving(true);
+      try {
+        await syncData('Transactions', 'DELETE', { id: editingTxId });
+        setTransactions(prev => prev.filter(t => t.id !== editingTxId));
+        setIsModalOpen(false);
+      } catch (e: any) {
+        alert(`Lỗi xóa dữ liệu: ${e.message}`);
+      } finally {
+        setIsSaving(false);
+      }
     }
   };
 
@@ -656,13 +676,18 @@ const ExpenseManager: React.FC<Props> = ({
                 <button onClick={() => setIsModalOpen(false)} className="flex-1 py-4 text-slate-400 font-black text-xs uppercase tracking-widest">Hủy</button>
                 <button 
                   onClick={handleSave}
+                  disabled={isSaving}
                   className="flex-[2] py-4 bg-slate-900 text-white font-black rounded-3xl text-xs uppercase tracking-widest shadow-xl active:scale-95 flex items-center justify-center gap-2"
                 >
-                  <CheckCircle2 size={18} /> {editingTxId ? 'Lưu cập nhật' : 'Xác nhận ghi sổ'}
+                  {isSaving ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle2 size={18} />} 
+                  {editingTxId ? 'Lưu cập nhật' : 'Xác nhận ghi sổ'}
                 </button>
               </div>
               {editingTxId && (
-                <button onClick={handleDelete} className="w-full text-red-500 font-bold text-[10px] uppercase tracking-widest hover:bg-red-50 py-3 rounded-2xl transition-all"><Trash2 size={14} className="inline mr-1" /> Xóa giao dịch này</button>
+                <button onClick={handleDelete} disabled={isSaving} className="w-full text-red-500 font-bold text-[10px] uppercase tracking-widest hover:bg-red-50 py-3 rounded-2xl transition-all">
+                  {isSaving ? <Loader2 size={14} className="inline mr-1 animate-spin" /> : <Trash2 size={14} className="inline mr-1" />}
+                  Xóa giao dịch này
+                </button>
               )}
            </div>
         </div>
