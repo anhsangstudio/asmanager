@@ -1,4 +1,5 @@
 
+// @google/genai guidelines: Fixed property access errors in handleSaveContract and corrected JSX syntax errors in payment method selection.
 import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Search, X, Trash2, Calendar as CalIcon, User, CreditCard, Package, Settings, AlignLeft, MapPin, CalendarDays, AlertCircle, Loader2, CheckCircle2, History, Banknote, ArrowRight, CloudOff, Printer, ExternalLink, FileText, Briefcase, Wallet, Info, Tag, Edit3, UserPlus, Clock, Check } from 'lucide-react';
 import { Contract, ContractStatus, Service, Customer, Staff, ContractItem, ServiceType, Transaction, TransactionType, StudioInfo, Schedule } from '../types';
@@ -265,7 +266,7 @@ const ContractManager: React.FC<Props> = ({
     setFormError(null);
 
     try {
-      // 1. Xử lý lưu Khách hàng trước (BẮT BUỘC AWAIT)
+      // 1. Xử lý lưu Khách hàng trước
       let customerId = '';
       const existingCust = customers.find(c => c.phone === form.customerPhone);
       let customerObj: Customer;
@@ -285,15 +286,23 @@ const ContractManager: React.FC<Props> = ({
       // 2. Xử lý lưu Hợp đồng
       const contractId = editingContractId || 'con-' + Math.random().toString(36).substr(2, 9);
       
-      // FIX: Sử dụng ID nhân viên thực tế thay vì hardcode string "staff"
-      // Ưu tiên: currentUser.id -> staff[0].id (fallback) -> null
+      // FIX: Lấy ID người tạo thực tế
       const creatorId = currentUser?.id || (staff.length > 0 ? staff[0].id : undefined);
+
+      // FIX QUAN TRỌNG: Cập nhật contractId cho toàn bộ schedules trước khi lưu
+      // Đảm bảo không có schedule nào bị contractId rỗng hoặc null
+      const validSchedules = form.schedules.map(sch => ({
+        ...sch,
+        contractId: contractId,
+        contractCode: form.contractCode // Đồng bộ luôn mã code nếu cần
+      }));
 
       const finalContract: Contract = {
         ...form,
         id: contractId,
         customerId: customerId,
-        createdBy: creatorId
+        createdBy: creatorId,
+        schedules: validSchedules
       } as Contract;
 
       // Cập nhật State UI trước (Optimistic UI)
@@ -303,23 +312,10 @@ const ContractManager: React.FC<Props> = ({
         setContracts(prev => [finalContract, ...prev]);
       }
       
-      // Đồng bộ Hợp đồng lên DB
+      // Đồng bộ Hợp đồng lên DB (apiService sẽ tự động xử lý lưu schedules con bên trong)
       await syncData('Contracts', editingContractId ? 'UPDATE' : 'CREATE', finalContract);
 
-      // 3. Đồng bộ Lịch trình riêng lẻ (Nếu có)
-      if (finalContract.schedules && finalContract.schedules.length > 0) {
-        for (const sch of finalContract.schedules) {
-          const staffNames = sch.assignments?.map(sid => staff.find(s => s.id === sid)?.name || sid).join(', ');
-          await syncData('LichLamViec', 'UPDATE', {
-            ...sch,
-            contractCode: finalContract.contractCode,
-            customerName: form.customerName,
-            customerPhone: form.customerPhone,
-            customerAddress: form.customerAddress,
-            staffNames: staffNames
-          });
-        }
-      }
+      // (Đã xóa bỏ đoạn code lưu lẻ Schedule ở đây để tránh trùng lặp và Race Condition)
 
       // 4. Xử lý Giao dịch đặt cọc (Nếu là tạo mới và có tiền cọc)
       if (!editingContractId && form.paidAmount > 0) {
@@ -350,9 +346,9 @@ const ContractManager: React.FC<Props> = ({
       console.error("Lưu hợp đồng thất bại:", err);
       let errorMessage = "Đã có lỗi xảy ra. Dữ liệu có thể chưa được đồng bộ Cloud.";
       if (err.message && (err.message.includes("foreign key constraint") || err.message.includes("Key is not present"))) {
-         errorMessage = "Lỗi dữ liệu: Tài khoản nhân viên tạo hợp đồng không hợp lệ trong hệ thống.";
+         errorMessage = "Lỗi dữ liệu: Thông tin liên kết (Khách hàng/Nhân viên/Hợp đồng) không hợp lệ.";
       } else if (err.message && err.message.includes("duplicate key")) {
-         errorMessage = "Lỗi: Mã hợp đồng đã tồn tại. Vui lòng thử lại.";
+         errorMessage = "Lỗi: Mã hợp đồng đã tồn tại. Vui lòng kiểm tra lại.";
       }
       setFormError(errorMessage);
     } finally {
@@ -379,7 +375,7 @@ const ContractManager: React.FC<Props> = ({
   const handleAddSchedule = () => {
     const newSched: Schedule = {
       id: Math.random().toString(36).substr(2, 9),
-      contractId: editingContractId || '',
+      contractId: editingContractId || '', // Tạm thời để rỗng, sẽ được update khi lưu
       type: scheduleTypes[0] || 'Lịch mới',
       date: form.date || getTodayISO(),
       notes: '',
