@@ -264,6 +264,7 @@ const ContractManager: React.FC<Props> = ({
     setFormError(null);
 
     try {
+      // 1. Xử lý lưu Khách hàng trước (BẮT BUỘC AWAIT)
       let customerId = '';
       const existingCust = customers.find(c => c.phone === form.customerPhone);
       let customerObj: Customer;
@@ -277,30 +278,32 @@ const ContractManager: React.FC<Props> = ({
         customerObj = { id: customerId, name: form.customerName, phone: form.customerPhone, address: form.customerAddress };
         setCustomers(prev => [...prev, customerObj]);
       }
-      syncData('Customers', existingCust ? 'UPDATE' : 'CREATE', customerObj);
+      // CRITICAL FIX: Thêm await để đảm bảo khách hàng tồn tại trong DB trước khi lưu Hợp đồng tham chiếu tới nó
+      await syncData('Customers', existingCust ? 'UPDATE' : 'CREATE', customerObj);
 
+      // 2. Xử lý lưu Hợp đồng
       const contractId = editingContractId || 'con-' + Math.random().toString(36).substr(2, 9);
       const finalContract: Contract = {
         ...form,
         id: contractId,
         customerId: customerId,
-        createdBy: 'staff'
+        createdBy: 'staff' // Cần cập nhật logic lấy user thật sau
       } as Contract;
 
+      // Cập nhật State UI trước để cảm giác nhanh (Optimistic UI)
       if (editingContractId) {
         setContracts(prev => prev.map(c => c.id === editingContractId ? finalContract : c));
       } else {
         setContracts(prev => [finalContract, ...prev]);
       }
       
-      // Đồng bộ Hợp đồng lên Sheet
+      // Đồng bộ Hợp đồng lên DB
       await syncData('Contracts', editingContractId ? 'UPDATE' : 'CREATE', finalContract);
 
-      // Đồng bộ Lịch trình riêng lẻ lên Sheet LichLamViec
+      // 3. Đồng bộ Lịch trình riêng lẻ (Nếu có)
       if (finalContract.schedules && finalContract.schedules.length > 0) {
         for (const sch of finalContract.schedules) {
           const staffNames = sch.assignments?.map(sid => staff.find(s => s.id === sid)?.name || sid).join(', ');
-          // @google/genai fix: Use 'form' directly for customer details as they are not properties of the 'Contract' type.
           await syncData('LichLamViec', 'UPDATE', {
             ...sch,
             contractCode: finalContract.contractCode,
@@ -312,6 +315,7 @@ const ContractManager: React.FC<Props> = ({
         }
       }
 
+      // 4. Xử lý Giao dịch đặt cọc (Nếu là tạo mới và có tiền cọc)
       if (!editingContractId && form.paidAmount > 0) {
         const txObj: Transaction = {
           id: 'tx-' + Math.random().toString(36).substr(2, 9),
@@ -327,6 +331,8 @@ const ContractManager: React.FC<Props> = ({
         };
         const collector = staff.find(s => s.id === form.staffInChargeId);
         setTransactions(prev => [txObj, ...prev]);
+        
+        // Không cần await transaction vì nó độc lập, lỗi transaction không nên chặn đóng modal
         syncData('Transactions', 'CREATE', {
             ...txObj,
             contractCode: form.contractCode,
@@ -335,9 +341,14 @@ const ContractManager: React.FC<Props> = ({
       }
 
       setIsModalOpen(false);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Lưu hợp đồng thất bại:", err);
-      setFormError("Đã có lỗi xảy ra. Dữ liệu có thể chưa được đồng bộ Cloud.");
+      let errorMessage = "Đã có lỗi xảy ra. Dữ liệu có thể chưa được đồng bộ Cloud.";
+      // Hiển thị lỗi rõ hơn nếu liên quan đến Foreign Key
+      if (err.message && err.message.includes("foreign key constraint")) {
+         errorMessage = "Lỗi dữ liệu liên kết (Khách hàng/Nhân viên). Vui lòng thử lại.";
+      }
+      setFormError(errorMessage);
     } finally {
       setIsSaving(false);
     }
