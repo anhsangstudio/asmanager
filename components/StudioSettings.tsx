@@ -1,30 +1,22 @@
 
-import React, { useRef, useState } from 'react';
-import { StudioInfo, Staff } from '../types';
-import { Building2, Globe, Mail, Phone, User, FileJson, Layout, Upload, Image as ImageIcon, X, FileText, CheckCircle2, Loader2 } from 'lucide-react';
-import { syncData } from '../apiService';
+import React, { useRef } from 'react';
+import { StudioInfo } from '../types';
+import { Building2, Globe, Mail, Phone, User, FileJson, Layout, Upload, Image as ImageIcon, X, FileText } from 'lucide-react';
 
 interface Props {
   studioInfo: StudioInfo;
   setStudioInfo: React.Dispatch<React.SetStateAction<StudioInfo>>;
-  currentUser?: Staff | null;
 }
 
-const StudioSettings: React.FC<Props> = ({ studioInfo, setStudioInfo, currentUser }) => {
+const StudioSettings: React.FC<Props> = ({ studioInfo, setStudioInfo }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isSaving, setIsSaving] = useState(false);
-
-  // Check Permission (Admin or Director or Settings.info.edit)
-  const canEdit = currentUser?.username === 'admin' || currentUser?.role === 'Giám đốc' || currentUser?.permissions?.['settings']?.['info']?.edit;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    if (!canEdit) return;
     const { name, value } = e.target;
     setStudioInfo(prev => ({ ...prev, [name]: value }));
   };
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!canEdit) return;
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 2 * 1024 * 1024) {
@@ -40,57 +32,24 @@ const StudioSettings: React.FC<Props> = ({ studioInfo, setStudioInfo, currentUse
   };
 
   const removeLogo = () => {
-    if (!canEdit) return;
     setStudioInfo(prev => ({ ...prev, logoImage: undefined }));
     if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const handleSave = async () => {
-    if (!canEdit) {
-      alert("Bạn không có quyền chỉnh sửa cấu hình.");
-      return;
-    }
-    setIsSaving(true);
-    try {
-      await syncData('settings', 'UPDATE', studioInfo);
-      alert("Đã lưu cấu hình thành công!");
-    } catch (e) {
-      console.error(e);
-      alert("Lỗi khi lưu cấu hình.");
-    } finally {
-      setIsSaving(false);
-    }
   };
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-500 pb-20">
       <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-8">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 bg-blue-600 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/20">
-              <Building2 size={28} />
-            </div>
-            <div>
-              <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Thông tin Studio</h2>
-              <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest mt-1">Thông tin này sẽ xuất hiện trên Hợp đồng và Hóa đơn</p>
-            </div>
+        <div className="flex items-center gap-4">
+          <div className="w-14 h-14 bg-blue-600 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/20">
+            <Building2 size={28} />
           </div>
-          {/* Save Button */}
-          {canEdit && (
-            <button 
-              onClick={handleSave} 
-              disabled={isSaving}
-              className="flex items-center gap-2 bg-slate-900 text-white px-6 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg active:scale-95 disabled:bg-slate-400"
-            >
-              {isSaving ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
-              Lưu cấu hình
-            </button>
-          )}
+          <div>
+            <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Thông tin Studio</h2>
+            <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest mt-1">Thông tin này sẽ xuất hiện trên Hợp đồng và Hóa đơn</p>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative">
-          {!canEdit && <div className="absolute inset-0 z-10 bg-transparent cursor-not-allowed" title="Chế độ chỉ xem"></div>}
-          
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Logo Upload Section */}
           <div className="md:col-span-2 space-y-3">
              <label className="text-[10px] font-black text-slate-500 uppercase ml-1 tracking-widest flex items-center gap-2">
@@ -105,7 +64,7 @@ const StudioSettings: React.FC<Props> = ({ studioInfo, setStudioInfo, currentUse
                     <span className="text-2xl font-black text-blue-600">{studioInfo.logoText}</span>
                   )}
                 </div>
-                {studioInfo.logoImage && canEdit && (
+                {studioInfo.logoImage && (
                   <button 
                     onClick={removeLogo}
                     className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center shadow-md hover:bg-red-600 transition-colors"
@@ -123,14 +82,12 @@ const StudioSettings: React.FC<Props> = ({ studioInfo, setStudioInfo, currentUse
                   className="hidden" 
                   onChange={handleLogoUpload} 
                 />
-                {canEdit && (
-                  <button 
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center gap-2 bg-white border border-slate-200 px-4 py-2 rounded-xl text-xs font-black uppercase text-slate-700 hover:bg-slate-100 transition-all shadow-sm"
-                  >
-                    <Upload size={14} /> Chọn ảnh mới
-                  </button>
-                )}
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex items-center gap-2 bg-white border border-slate-200 px-4 py-2 rounded-xl text-xs font-black uppercase text-slate-700 hover:bg-slate-100 transition-all shadow-sm"
+                >
+                  <Upload size={14} /> Chọn ảnh mới
+                </button>
               </div>
             </div>
           </div>

@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Calendar as CalIcon, MapPin, Clock, User, ChevronLeft, ChevronRight, List, Grid } from 'lucide-react';
-import { Contract, Staff, Schedule } from '../types';
+import { Contract, Staff, ScheduleType, Schedule } from '../types';
 
 interface Props {
   contracts: Contract[];

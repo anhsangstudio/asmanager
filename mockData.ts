@@ -55,7 +55,7 @@ export const mockStaff: Staff[] = [
     username: 'photo1',
     password: '123',
     permissions: {
-      // Đã loại bỏ quyền Dashboard để tuân thủ rule mới
+      dashboard: { main: { view: true, add: false, edit: false, delete: false, ownOnly: true } },
       contracts: { list: { view: true, add: false, edit: false, delete: false, ownOnly: true } },
       schedules: { 
         main: { view: true, add: true, edit: true, delete: false, ownOnly: false },
