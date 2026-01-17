@@ -1,6 +1,6 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.1';
-import { Service, Transaction, Staff, Contract, Schedule, Customer, Rule, RuleViolation, SalaryPeriod, SalarySlip, SalaryItem } from './types';
+import { Service, Transaction, Staff, Contract, Schedule, Customer, Rule, RuleViolation, SalaryPeriod, SalarySlip, SalaryItem, StudioInfo } from './types';
 
 // Supabase Configuration
 const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || '';
@@ -22,6 +22,7 @@ const deleteBy = async (table: string, col: string, val: any) => {
   if (error) throw error;
 };
 
+// ... (Giữ nguyên checkServiceCodeExists, getNextServiceCode, uploadTransactionImage) ...
 export const checkServiceCodeExists = async (code: string) => {
   if (!supabase) return false;
   const { data } = await supabase.from('services').select('ma_dv').eq('ma_dv', code).maybeSingle();
@@ -30,7 +31,6 @@ export const checkServiceCodeExists = async (code: string) => {
 
 export const getNextServiceCode = async () => {
   if (!supabase) return `DV-${Date.now()}`;
-  // Simple logic: count + 1 or timestamp
   return `DV-${Date.now()}`;
 };
 
@@ -47,8 +47,7 @@ export const uploadTransactionImage = async (file: File, metadata: any) => {
   }
 };
 
-// --- MAPPERS ---
-
+// ... (Giữ nguyên các hàm mapper cũ) ...
 // Rule
 const ruleToDb = (r: Partial<Rule>) => ({
   id: r.id,
@@ -72,7 +71,7 @@ const violationToDb = (v: Partial<RuleViolation>) => ({
   id: v.id,
   rule_id: v.ruleId,
   staff_id: v.staffId,
-  violation_date: v.date, // Format YYYY-MM-DD
+  violation_date: v.date, 
   amount: v.amount,
   notes: v.notes,
   created_by: v.createdBy
@@ -85,8 +84,8 @@ const violationFromDb = (r: any): RuleViolation => ({
   amount: Number(r.amount || 0),
   notes: r.notes,
   createdBy: r.created_by,
-  ruleTitle: r.rules?.title, // Join
-  staffName: r.staff?.name // Join
+  ruleTitle: r.rules?.title, 
+  staffName: r.staff?.name 
 });
 
 // Salary Period
@@ -154,6 +153,7 @@ const salaryItemFromDb = (r: any): SalaryItem => ({
   referenceId: r.reference_id
 });
 
+// ... (Giữ nguyên fetchRulesData, fetchSalaryData) ...
 export const fetchRulesData = async () => {
   if (!isConfigured || !supabase) return { rules: [], violations: [] };
   
@@ -179,7 +179,6 @@ export const fetchSalaryData = async (staffId?: string) => {
   }
   const slipsRes = await slipsQuery;
 
-  // Fetch Items separately to avoid complex join issues in JS mapping
   let items: any[] = [];
   if (slipsRes.data && slipsRes.data.length > 0) {
     const slipIds = slipsRes.data.map((s: any) => s.id);
@@ -198,11 +197,19 @@ export const fetchSalaryData = async (staffId?: string) => {
   };
 };
 
+// HÀM MỚI: Fetch Settings
+export const fetchSettings = async () => {
+  if (!isConfigured || !supabase) return null;
+  const { data } = await supabase.from('settings').select('value').eq('id', 'studio_info').maybeSingle();
+  return data ? data.value : null;
+};
+
 export const syncData = async (table: string, action: 'CREATE' | 'UPDATE' | 'DELETE', rawData: any) => {
   if (!isConfigured || !supabase) return { success: true, simulated: true, data: rawData };
 
   let tableName = table.toLowerCase();
-  // Mapping tên bảng cũ
+  
+  // Mapping
   if (tableName === 'products') tableName = 'services';
   if (tableName === 'nhanvien') tableName = 'staff';
   if (tableName === 'hopdong') tableName = 'contracts';
@@ -210,19 +217,24 @@ export const syncData = async (table: string, action: 'CREATE' | 'UPDATE' | 'DEL
   if (tableName === 'khachhang') tableName = 'customers';
   if (tableName === 'lichlamviec') tableName = 'schedules';
   
-  // Mapping tên bảng mới
   if (tableName === 'noiquy') tableName = 'rules';
   if (tableName === 'vipham') tableName = 'rule_violations';
   if (tableName === 'kyluong') tableName = 'salary_periods';
   if (tableName === 'phieuluong') tableName = 'salary_slips';
   if (tableName === 'chitietluong') tableName = 'salary_items';
 
+  // XỬ LÝ SETTINGS
+  if (tableName === 'settings') {
+    const data = await upsertOne('settings', { id: 'studio_info', value: rawData });
+    return { success: true, data: data.value };
+  }
+
   if (action === 'DELETE') {
      await deleteBy(tableName, tableName === 'services' ? 'ma_dv' : 'id', rawData.id || rawData.ma_dv);
      return { success: true };
   }
 
-  // Handle New Types
+  // Handle Mapped Types
   if (tableName === 'rules') {
     const data = await upsertOne('rules', ruleToDb(rawData));
     return { success: true, data: ruleFromDb(data) };
@@ -244,6 +256,11 @@ export const syncData = async (table: string, action: 'CREATE' | 'UPDATE' | 'DEL
     return { success: true, data: salaryItemFromDb(data) };
   }
 
+  // Handle Default Types (Service, Staff, etc. - assume existing mappers in main code or direct mapping if simple)
+  // Lưu ý: Trong code gốc có các hàm serviceToDb, staffToDb,... 
+  // Ở đây tôi giữ nguyên logic 'upsertOne' gọi trực tiếp nếu chưa có mapper ở trên 
+  // để đảm bảo tương thích code cũ.
+  
   const data = await upsertOne(tableName, rawData);
   return { success: true, data };
 };

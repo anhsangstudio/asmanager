@@ -18,6 +18,7 @@ import SalaryManager from './components/SalaryManager';
 
 import { Staff, StudioInfo } from './types';
 import { mockStaff, mockContracts, mockCustomers, mockTransactions, mockServices } from './mockData';
+import { fetchSettings } from './apiService'; // Import mới
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -51,6 +52,17 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
+
+  // LOAD SETTINGS TỪ DB KHI APP START
+  useEffect(() => {
+    const loadSettings = async () => {
+      const savedInfo = await fetchSettings();
+      if (savedInfo) {
+        setStudioInfo(savedInfo);
+      }
+    };
+    loadSettings();
+  }, []);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,6 +113,7 @@ function App() {
   ];
 
   if (!currentUser) {
+    // ... (Giữ nguyên UI Login) ...
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4 font-sans">
         <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl w-full max-w-md border border-slate-200">
@@ -150,6 +163,7 @@ function App() {
   }
 
   return (
+    // ... (Giữ nguyên UI chính của App) ...
     <div className="flex h-screen bg-slate-50 font-sans overflow-hidden">
       {/* Sidebar */}
       <div className="w-72 bg-white border-r border-slate-200 flex flex-col shrink-0 z-20 hidden md:flex">
@@ -264,12 +278,14 @@ function App() {
                 <ProductManager 
                   services={services} setServices={setServices}
                   departments={departments} setDepartments={setDepartments}
+                  currentUser={currentUser} // Truyền User để check quyền
                 />
               )}
               {activeTab === 'staff' && (
                 <StaffManager 
                   staff={staff} setStaff={setStaff}
                   schedules={contracts.flatMap(c => c.schedules)}
+                  currentUser={currentUser} // Truyền User để check quyền
                 />
               )}
               {activeTab === 'rules' && (
@@ -281,6 +297,7 @@ function App() {
               {activeTab === 'settings' && (
                 <StudioSettings 
                   studioInfo={studioInfo} setStudioInfo={setStudioInfo}
+                  currentUser={currentUser} // Truyền User để check quyền
                 />
               )}
             </div>
