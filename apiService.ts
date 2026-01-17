@@ -286,6 +286,28 @@ export const uploadFile = async (bucket: string, path: string, file: File) => {
 };
 
 // =========================
+// Backend Google Drive Upload
+// =========================
+export const uploadTransactionImage = async (file: File, metadata: { category: string, timestamp: string, staffName: string }) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('metadata', JSON.stringify(metadata));
+
+  // Gọi tới Serverless Function đã tạo
+  const response = await fetch('/api/drive_upload', {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errData = await response.json();
+    throw new Error(errData.error || 'Upload to Drive failed');
+  }
+
+  return await response.json(); // Trả về { success: true, url: '...' }
+};
+
+// =========================
 // Service Code Management
 // =========================
 export const checkServiceCodeExists = async (code: string): Promise<boolean> => {

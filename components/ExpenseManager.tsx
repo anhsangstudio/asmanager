@@ -9,7 +9,7 @@ import {
 import { Transaction, TransactionType, ExpenseCategory, Contract, Customer, Staff, ModulePermission } from '../types';
 import { classifyExpense } from '../geminiService';
 import { BarChart as ReBarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, LineChart, Line, Legend } from 'recharts';
-import { syncData } from '../apiService';
+import { syncData, uploadTransactionImage } from '../apiService';
 
 interface Props {
   transactions: Transaction[];
@@ -42,6 +42,7 @@ const ExpenseManager: React.FC<Props> = ({
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const billInputRef = useRef<HTMLInputElement>(null);
+  const [billFile, setBillFile] = useState<File | null>(null);
   
   // Kiểm tra quyền Module hiện tại (CHỈ DÙNG CHO VIỆC HIỂN THỊ DANH SÁCH/TAB)
   const currentModulePerm = useMemo(() => {
@@ -154,6 +155,7 @@ const ExpenseManager: React.FC<Props> = ({
     }
 
     setEditingTxId(null);
+    setBillFile(null); // Reset file
     const firstMain = type === TransactionType.INCOME ? 'Hợp đồng' : Object.keys(categories)[0];
     const firstSub = type === TransactionType.INCOME ? 'Thu đợt 1' : categories[firstMain]?.[0] || 'Khác';
     
@@ -181,6 +183,7 @@ const ExpenseManager: React.FC<Props> = ({
     }
 
     setEditingTxId(tx.id);
+    setBillFile(null); // Reset file object, only keep url
     setFormData({ ...tx });
     setIsModalOpen(true);
   };
@@ -192,6 +195,10 @@ const ExpenseManager: React.FC<Props> = ({
         alert("Ảnh quá dung lượng (tối đa 5MB)");
         return;
       }
+      // Lưu file gốc để gửi lên backend
+      setBillFile(file);
+      
+      // Tạo preview
       setIsUploading(true);
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -211,16 +218,49 @@ const ExpenseManager: React.FC<Props> = ({
     setIsSaving(true);
     // Backup state cũ để rollback nếu lỗi
     const previousTransactions = [...transactions];
+    let finalBillUrl = formData.billImageUrl;
 
     try {
+      // 1. Upload ảnh lên Google Drive (nếu có file mới)
+      if (billFile) {
+        setIsUploading(true);
+        const staffName = staff.find(s => s.id === (formData.staffId || currentUser.id))?.name || 'Unknown';
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        
+        try {
+          const uploadRes = await uploadTransactionImage(billFile, {
+             category: formData.mainCategory || 'Expense',
+             timestamp: timestamp,
+             staffName: staffName
+          });
+          
+          if (uploadRes.success && uploadRes.url) {
+            finalBillUrl = uploadRes.url;
+          }
+        } catch (uploadErr) {
+          console.error("Upload failed", uploadErr);
+          alert("Lỗi upload ảnh lên Google Drive. Giao dịch sẽ được lưu nhưng không có ảnh.");
+          finalBillUrl = ''; // Hoặc giữ nguyên nếu muốn retry, ở đây ta chấp nhận lưu không ảnh
+        } finally {
+          setIsUploading(false);
+        }
+      }
+
+      // 2. Prepare Payload
+      const transactionPayload = {
+        ...formData,
+        billImageUrl: finalBillUrl
+      } as Transaction;
+
+      // 3. Update UI & Sync DB
       if (editingTxId) {
-        const updatedTx = { ...formData, id: editingTxId } as Transaction;
+        const updatedTx = { ...transactionPayload, id: editingTxId };
         setTransactions(prev => prev.map(t => t.id === editingTxId ? updatedTx : t));
         await syncData('Transactions', 'UPDATE', updatedTx);
       } else {
         const newTx: Transaction = {
           id: Math.random().toString(36).substr(2, 9),
-          ...formData as Transaction
+          ...transactionPayload
         };
         setTransactions([newTx, ...transactions]);
         await syncData('Transactions', 'CREATE', newTx);
@@ -374,6 +414,8 @@ const ExpenseManager: React.FC<Props> = ({
                     <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Danh mục Lớn</th>
                     <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Hạng mục con</th>
                     <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">P.Thức / N.Viên</th>
+                    {/* Cột Hình ảnh mới */}
+                    <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Hình ảnh</th>
                     <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Số tiền</th>
                     <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Ngày</th>
                   </tr>
@@ -384,7 +426,6 @@ const ExpenseManager: React.FC<Props> = ({
                       <td className="px-8 py-6">
                         <div className="flex items-center gap-3">
                            <div className="font-black text-slate-800 text-sm">{tx.description}</div>
-                           {tx.billImageUrl && <ImageIcon size={14} className="text-blue-500" />}
                         </div>
                         {tx.contractId && (
                            <div className="text-[10px] text-blue-500 font-bold uppercase mt-1">HĐ: {contracts.find(c => c.id === tx.contractId)?.contractCode || 'Lẻ'}</div>
@@ -402,6 +443,23 @@ const ExpenseManager: React.FC<Props> = ({
                          <div className="text-xs font-bold text-slate-600">{tx.vendor}</div>
                          <div className="text-[10px] text-slate-400">{staff.find(s => s.id === tx.staffId)?.name || '-'}</div>
                       </td>
+                      {/* Hiển thị Icon mở ảnh */}
+                      <td className="px-6 py-6 text-center">
+                        {tx.billImageUrl ? (
+                          <button 
+                            onClick={(e) => { 
+                              e.stopPropagation(); // Prevent row click
+                              window.open(tx.billImageUrl, '_blank'); 
+                            }}
+                            className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm"
+                            title="Xem hình ảnh chứng từ"
+                          >
+                            <ImageIcon size={16} />
+                          </button>
+                        ) : (
+                          <span className="text-slate-300">-</span>
+                        )}
+                      </td>
                       <td className="px-6 py-6 text-right">
                         <div className={`text-lg font-black ${tx.type === TransactionType.INCOME ? 'text-emerald-600' : 'text-slate-900'}`}>
                           {tx.type === TransactionType.INCOME ? '+' : '-'}{tx.amount.toLocaleString()}đ
@@ -413,7 +471,7 @@ const ExpenseManager: React.FC<Props> = ({
                     </tr>
                   ))}
                   {filteredData.length === 0 && (
-                    <tr><td colSpan={6} className="py-20 text-center text-slate-300 font-bold italic">Không tìm thấy giao dịch nào</td></tr>
+                    <tr><td colSpan={7} className="py-20 text-center text-slate-300 font-bold italic">Không tìm thấy giao dịch nào</td></tr>
                   )}
                 </tbody>
               </table>
@@ -637,7 +695,10 @@ const ExpenseManager: React.FC<Props> = ({
                         <div className="relative">
                           <img src={formData.billImageUrl} className="w-24 h-24 object-cover rounded-2xl shadow-md border-2 border-white" alt="Bill" />
                           <button 
-                            onClick={() => setFormData({...formData, billImageUrl: ''})}
+                            onClick={() => {
+                                setFormData({...formData, billImageUrl: ''});
+                                setBillFile(null); // Clear selected file
+                            }}
                             className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-red-600 transition-colors"
                           >
                             <X size={12} />
@@ -654,7 +715,7 @@ const ExpenseManager: React.FC<Props> = ({
                       )}
                       <div className="flex-1 space-y-1">
                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">Lưu trữ minh chứng chi tiền</p>
-                        <p className="text-[9px] text-slate-300 italic">PNG, JPG tối đa 5MB</p>
+                        <p className="text-[9px] text-slate-300 italic">PNG, JPG tối đa 5MB. Sẽ được upload lên Google Drive.</p>
                         <input 
                           type="file" 
                           ref={billInputRef}
@@ -690,10 +751,10 @@ const ExpenseManager: React.FC<Props> = ({
                 <button onClick={() => setIsModalOpen(false)} className="flex-1 py-4 text-slate-400 font-black text-xs uppercase tracking-widest">Hủy</button>
                 <button 
                   onClick={handleSave}
-                  disabled={isSaving}
-                  className="flex-[2] py-4 bg-slate-900 text-white font-black rounded-3xl text-xs uppercase tracking-widest shadow-xl active:scale-95 flex items-center justify-center gap-2"
+                  disabled={isSaving || isUploading}
+                  className="flex-[2] py-4 bg-slate-900 text-white font-black rounded-3xl text-xs uppercase tracking-widest shadow-xl active:scale-95 flex items-center justify-center gap-2 disabled:bg-slate-400"
                 >
-                  {isSaving ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle2 size={18} />} 
+                  {isSaving || isUploading ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle2 size={18} />} 
                   {editingTxId ? 'Lưu cập nhật' : 'Xác nhận ghi sổ'}
                 </button>
               </div>
