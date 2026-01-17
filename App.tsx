@@ -1,168 +1,125 @@
-
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
-  LayoutDashboard, FileText, Calendar, Wallet, Users, Package, 
-  Menu, X, Bell, Search, MessageSquare, RefreshCw, Cloud, CloudOff, Loader2, Settings, LogOut, Key, User, Sparkles, Building, ShieldAlert, Link2, MoreHorizontal, AlertCircle, HelpCircle
+  LayoutDashboard, FileText, DollarSign, Calendar, Package, 
+  Users, Settings, LogOut, MessageSquare, Menu, Bell, Loader2, Key
 } from 'lucide-react';
+
 import Dashboard from './components/Dashboard';
 import ContractManager from './components/ContractManager';
-import ScheduleManager from './components/ScheduleManager';
 import ExpenseManager from './components/ExpenseManager';
-import StaffManager from './components/StaffManager';
+import ScheduleManager from './components/ScheduleManager';
 import ProductManager from './components/ProductManager';
-import AIAssistant from './components/AIAssistant';
+import StaffManager from './components/StaffManager';
 import StudioSettings from './components/StudioSettings';
+import AIAssistant from './components/AIAssistant';
+
 import { 
-  mockCustomers, mockStaff, mockServices, mockContracts, mockTransactions 
-} from './mockData';
-import { Contract, Transaction, Staff, Customer, Service, DEFAULT_SCHEDULE_TYPES, DEFAULT_DEPARTMENTS, ExpenseCategory, StudioInfo, ModulePermission, Schedule } from './types';
-import { isConfigured, fetchBootstrapData, login, supabase } from './apiService';
+  Contract, Customer, Service, Staff, Transaction, Schedule, StudioInfo, 
+  DEFAULT_SCHEDULE_TYPES, DEFAULT_DEPARTMENTS, TransactionType
+} from './types';
+import { fetchBootstrapData, login } from './apiService';
+import { mockCustomers, mockStaff, mockServices, mockContracts, mockTransactions } from './mockData';
 
 const App: React.FC = () => {
+  // Auth State
   const [currentUser, setCurrentUser] = useState<Staff | null>(null);
-  const [activeTab, setActiveTab] = useState<string>('');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [showAssistant, setShowAssistant] = useState(false);
-  const [showMobileMore, setShowMobileMore] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'offline'>(isConfigured ? 'synced' : 'offline');
-
-  // Dữ liệu nghiệp vụ trung tâm
-  const [contracts, setContracts] = useState<Contract[]>([]);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [staff, setStaff] = useState<Staff[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [services, setServices] = useState<Service[]>([]);
-  const [schedules, setSchedules] = useState<Schedule[]>([]);
-  const [scheduleTypes, setScheduleTypes] = useState<string[]>(DEFAULT_SCHEDULE_TYPES);
-  
-  const [studioInfo, setStudioInfo] = useState<StudioInfo>({
-    name: 'ÁNH SÁNG STUDIO',
-    address: '81 Lý Nhật Quang, Thị Trấn Đô Lương, Nghệ An',
-    phone: '097.899.4568',
-    zalo: '0971368345',
-    website: 'www.anhsangwedding.vn',
-    fanpage: 'www.facebook.com/anhsangwedding',
-    email: 'anhsangstudio.dl@gmail.com',
-    directorName: 'Trần Thị Sáng',
-    logoText: 'AS',
-    googleDocsTemplateUrl: '',
-    contractTerms: `Điều khoản mặc định...`
-  });
-
-  const loadMockData = () => {
-    setStaff(mockStaff);
-    setContracts(mockContracts);
-    setTransactions(mockTransactions);
-    setSchedules(mockContracts.flatMap(c => (c.schedules || []).map(s => ({ ...s, contractCode: c.contractCode }))));
-    setServices(mockServices as unknown as Service[]);
-    setSyncStatus('offline');
-    setLoadError(null);
-    setIsLoading(false);
-    console.log("[Bootstrap Fallback] Using mock data.");
-  };
-
-  const initApp = async () => {
-    setIsLoading(true);
-    setLoadError(null);
-    try {
-      if (!isConfigured) {
-        loadMockData();
-        return;
-      }
-
-      const data = await fetchBootstrapData();
-      if (data) {
-        setStaff(data.staff);
-        setContracts(data.contracts);
-        setTransactions(data.transactions);
-        setSchedules(data.schedules);
-        setServices(data.services);
-        setSyncStatus('synced');
-        console.log("[Bootstrap Success] Data loaded from Supabase.");
-      }
-    } catch (e: any) {
-      console.error("[Bootstrap Failure]", e);
-      setLoadError(e.message || "Không thể kết nối với Supabase Cloud.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Setup Real-time Subscriptions
-  useEffect(() => {
-    if (!isConfigured) return;
-
-    const servicesChannel = supabase
-      .channel('services_changes')
-      .on('postgres_changes', { event: '*', table: 'services' }, (payload) => {
-        console.log('[Realtime Service Update]', payload);
-        const { eventType, new: newRecord, old: oldRecord } = payload;
-        
-        // Map record for app compatibility
-        const mapped = newRecord ? {
-          ...newRecord,
-          id: newRecord.ma_dv,
-          code: newRecord.ma_dv,
-          name: newRecord.ten_dv,
-          price: newRecord.don_gia,
-          type: newRecord.nhom_dv,
-          description: newRecord.chi_tiet_dv,
-          unit: newRecord.don_vi_tinh,
-          label: newRecord.nhan
-        } : null;
-
-        if (eventType === 'INSERT') {
-          setServices(prev => [mapped as Service, ...prev]);
-        } else if (eventType === 'UPDATE') {
-          setServices(prev => prev.map(s => s.ma_dv === mapped?.ma_dv ? mapped as Service : s));
-        } else if (eventType === 'DELETE') {
-          setServices(prev => prev.filter(s => s.ma_dv !== oldRecord.ma_dv));
-        }
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(servicesChannel);
-    };
-  }, []);
-
-  useEffect(() => {
-    initApp();
-  }, []);
-
-  const [loginForm, setLoginForm] = useState({ username: '', password: '' });
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+  // App State
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [showAIAssistant, setShowAIAssistant] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Data State
+  const [contracts, setContracts] = useState<Contract[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
+  const [staff, setStaff] = useState<Staff[]>([]);
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
+
+  // Config State
+  const [scheduleTypes, setScheduleTypes] = useState<string[]>(DEFAULT_SCHEDULE_TYPES);
+  const [departments, setDepartments] = useState<string[]>(DEFAULT_DEPARTMENTS);
+  const [expenseCategories, setExpenseCategories] = useState<string[]>(['Sản xuất', 'Marketing', 'Quản trị', 'Lương', 'Đầu tư', 'Khác']);
+  const [studioInfo, setStudioInfo] = useState<StudioInfo>({
+    name: 'Ánh Sáng Studio',
+    address: '123 Phố Huế, Hai Bà Trưng, Hà Nội',
+    phone: '0987654321',
+    zalo: '0987654321',
+    website: 'anhsangstudio.vn',
+    fanpage: 'facebook.com/anhsangstudio',
+    email: 'contact@anhsangstudio.vn',
+    directorName: 'Nguyễn Văn A',
+    googleDocsTemplateUrl: '',
+    logoText: 'AS',
+    contractTerms: `1. Khách hàng vui lòng kiểm tra kỹ thông tin trước khi ký.
+2. Đặt cọc 30% giá trị hợp đồng ngay khi ký.
+3. Thanh toán nốt phần còn lại khi nhận sản phẩm hoàn thiện.
+4. Studio chịu trách nhiệm lưu trữ file gốc trong vòng 6 tháng.`
+  });
+
+  useEffect(() => {
+    const initData = async () => {
+      setIsLoading(true);
+      try {
+        const data = await fetchBootstrapData();
+        if (data) {
+          setContracts(data.contracts);
+          setCustomers(data.customers);
+          setTransactions(data.transactions);
+          setServices(data.services);
+          setStaff(data.staff);
+          setSchedules(data.schedules);
+        } else {
+          // Fallback mock data
+          setContracts(mockContracts);
+          setCustomers(mockCustomers);
+          setTransactions(mockTransactions);
+          setServices(mockServices);
+          setStaff(mockStaff);
+          const extractedSchedules = mockContracts.flatMap(c => 
+            (c.schedules || []).map(s => ({...s, contractCode: c.contractCode}))
+          );
+          setSchedules(extractedSchedules);
+        }
+      } catch (e) {
+        console.error("Data load error", e);
+        // Fallback on error
+        setContracts(mockContracts);
+        setCustomers(mockCustomers);
+        setTransactions(mockTransactions);
+        setServices(mockServices);
+        setStaff(mockStaff);
+        const extractedSchedules = mockContracts.flatMap(c => 
+            (c.schedules || []).map(s => ({...s, contractCode: c.contractCode}))
+        );
+        setSchedules(extractedSchedules);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    initData();
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoggingIn(true);
     setLoginError('');
-    
     try {
-      const result = await login(loginForm.username, loginForm.password);
-      if (result.success && result.user) {
-        const user = result.user;
-        const userPermissions = user.permissions || {};
-        
-        const permittedModules = Object.keys(userPermissions).filter(modId => {
-          const subPerms = userPermissions[modId] || {};
-          return Object.values(subPerms).some((p: any) => p && p.view);
-        });
-
-        if (permittedModules.length > 0 || user.username === 'admin') {
-          setCurrentUser(user);
-          setActiveTab(permittedModules[0] || 'dashboard');
-        } else {
-          setLoginError('Tài khoản này chưa được phân quyền truy cập module.');
-        }
+      const res = await login(username, password);
+      if (res.success && res.user) {
+        setCurrentUser(res.user);
       } else {
-        setLoginError(result.error || 'Sai thông tin đăng nhập.');
+        setLoginError(res.error || 'Đăng nhập thất bại');
       }
-    } catch (e: any) {
-      setLoginError(e.message || 'Lỗi hệ thống hoặc kết nối Supabase Cloud.');
+    } catch (err) {
+      setLoginError('Lỗi kết nối');
     } finally {
       setIsLoggingIn(false);
     }
@@ -170,163 +127,183 @@ const App: React.FC = () => {
 
   const handleLogout = () => {
     setCurrentUser(null);
-    setLoginForm({ username: '', password: '' });
+    setUsername('');
+    setPassword('');
   };
 
-  const allNavItems = [
-    { id: 'dashboard', label: 'T.Quan', fullLabel: 'Tổng quan', icon: LayoutDashboard },
-    { id: 'contracts', label: 'H.Đồng', fullLabel: 'Hợp đồng', icon: FileText },
-    { id: 'schedules', label: 'Lịch', fullLabel: 'Lịch làm việc', icon: Calendar },
-    { id: 'finance', label: 'Thu Chi', fullLabel: 'Tài chính', icon: Wallet },
-    { id: 'staff', label: 'N.Sự', fullLabel: 'Nhân sự', icon: Users },
-    { id: 'products', label: 'S.Phẩm', fullLabel: 'Sản phẩm', icon: Package },
-    { id: 'settings', label: 'C.Hình', fullLabel: 'Cấu hình', icon: Settings },
-  ];
-
-  const permittedNavItems = useMemo(() => {
-    if (!currentUser) return [];
-    if (currentUser.username === 'admin') return allNavItems;
-    
-    return allNavItems.filter(item => {
-      const subPerms = (currentUser.permissions || {})[item.id] || {};
-      return Object.values(subPerms).some((p: any) => p && p.view);
-    });
-  }, [currentUser]);
-
-  if (loadError) {
-    return (
-      <div className="h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-center gap-6 overflow-y-auto">
-        <div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center text-red-500 mb-2 shrink-0">
-           <AlertCircle size={48} />
-        </div>
-        <h1 className="text-2xl font-black text-white uppercase tracking-tight">Lỗi Supabase Cloud</h1>
-        
-        <div className="max-w-md bg-white/5 border border-white/10 p-6 rounded-[2rem] space-y-4">
-          <p className="text-slate-400 font-medium text-sm leading-relaxed">{loadError}</p>
-          <div className="pt-4 border-t border-white/10 text-left space-y-3 text-[11px] text-slate-500 font-medium">
-             <p>Vui lòng kiểm tra thông số SUPABASE_URL và SUPABASE_ANON_KEY trong môi trường.</p>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-3 w-full max-w-xs shrink-0">
-          <button 
-            onClick={initApp}
-            className="bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
-          >
-            <RefreshCw size={16} /> Thử kết nối lại
-          </button>
-          <button 
-            onClick={loadMockData}
-            className="bg-slate-800 hover:bg-slate-700 text-slate-300 py-4 rounded-2xl font-black uppercase text-xs tracking-widest active:scale-95 transition-all"
-          >
-            Sử dụng Dữ liệu mẫu (Offline)
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (isLoading && isConfigured) {
-    return (
-      <div className="h-screen bg-slate-950 flex flex-col items-center justify-center gap-4">
-        <Loader2 className="text-blue-500 animate-spin" size={48} />
-        <div className="text-white font-black uppercase text-[10px] tracking-[0.2em]">Đồng bộ hóa Supabase Ánh Sáng Studio...</div>
-      </div>
-    );
-  }
+  // Check permissions helper
+  const canAccess = (module: string) => {
+    if (!currentUser) return false;
+    const perms = currentUser.permissions?.[module];
+    if (!perms) return false;
+    // Check if any submodule has view access
+    return Object.values(perms).some((p: any) => p.view);
+  };
 
   if (!currentUser) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
-        <div className="w-full max-w-[440px] bg-white/10 backdrop-blur-3xl rounded-[3rem] p-10 border border-white/10 shadow-2xl animate-in">
-          <div className="text-center mb-10">
-            <div className="w-20 h-20 bg-blue-600 rounded-[2rem] flex items-center justify-center mx-auto mb-4 shadow-xl shadow-blue-500/20">
-              <span className="text-4xl font-black text-white">AS</span>
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+        <div className="bg-white rounded-[2.5rem] p-8 md:p-12 w-full max-w-md shadow-2xl relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500 rounded-full blur-[60px] opacity-20 -mr-10 -mt-10"></div>
+          <div className="relative z-10">
+            <div className="w-16 h-16 bg-slate-900 text-white rounded-2xl flex items-center justify-center mb-6 shadow-xl text-2xl font-black">
+              AS
             </div>
-            <h1 className="text-2xl font-black text-white uppercase tracking-tight">Ánh Sáng Studio</h1>
-            <p className="text-blue-400 font-bold text-[10px] uppercase tracking-[0.2em] mt-2">Supabase Powered v3.0</p>
+            <h1 className="text-3xl font-black text-slate-900 mb-2">Đăng Nhập</h1>
+            <p className="text-slate-400 font-bold text-xs uppercase tracking-widest mb-8">Hệ thống quản trị Ánh Sáng Studio</p>
+            
+            <form onSubmit={handleLogin} className="space-y-6">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase ml-1 tracking-widest">Tên đăng nhập</label>
+                <input 
+                  type="text" 
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                  placeholder="admin"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 uppercase ml-1 tracking-widest">Mật khẩu</label>
+                <input 
+                  type="password" 
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                  placeholder="••••"
+                />
+              </div>
+
+              {loginError && (
+                <div className="p-4 bg-red-50 text-red-500 rounded-2xl text-xs font-bold flex items-center gap-2">
+                   <span className="w-1.5 h-1.5 bg-red-500 rounded-full"></span> {loginError}
+                </div>
+              )}
+
+              <button 
+                type="submit" 
+                disabled={isLoggingIn}
+                className="w-full py-5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-70"
+              >
+                {isLoggingIn ? <Loader2 size={18} className="animate-spin" /> : <Key size={18} />}
+                Đăng nhập hệ thống
+              </button>
+            </form>
           </div>
-          <form onSubmit={handleLogin} className="space-y-6">
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Tên đăng nhập</label>
-              <input type="text" placeholder="Nhập username..." className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white outline-none focus:ring-2 focus:ring-blue-500 transition-all" value={loginForm.username} onChange={e => setLoginForm({...loginForm, username: e.target.value})} />
-            </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Mật khẩu</label>
-              <input type="password" placeholder="••••••••" className="w-full bg-white/5 border border-white/10 rounded-2xl py-4 px-6 text-white outline-none focus:ring-2 focus:ring-blue-500 transition-all" value={loginForm.password} onChange={e => setLoginForm({...loginForm, password: e.target.value})} />
-            </div>
-            {loginError && <div className="text-red-400 text-xs font-bold text-center bg-red-400/10 py-3 rounded-xl border border-red-400/20">{loginError}</div>}
-            <button disabled={isLoggingIn} className="w-full bg-blue-600 py-5 rounded-[1.5rem] text-white font-black uppercase text-xs tracking-widest shadow-xl shadow-blue-500/30 hover:bg-blue-700 active:scale-95 transition-all disabled:bg-slate-700">
-              {isLoggingIn ? <Loader2 className="animate-spin mx-auto" /> : 'Truy cập hệ thống'}
-            </button>
-          </form>
         </div>
       </div>
     );
   }
 
-  const currentTabInfo = allNavItems.find(i => i.id === activeTab);
-  const canUseAI = currentUser?.username === 'admin' || currentUser?.role === 'Giám đốc';
+  const menuItems = [
+    { id: 'dashboard', icon: LayoutDashboard, label: 'Tổng quan', show: canAccess('dashboard') },
+    { id: 'contracts', icon: FileText, label: 'Hợp đồng', show: canAccess('contracts') },
+    { id: 'finance', icon: DollarSign, label: 'Thu & Chi', show: canAccess('finance') },
+    { id: 'schedule', icon: Calendar, label: 'Lịch làm việc', show: canAccess('schedules') },
+    { id: 'products', icon: Package, label: 'Dịch vụ', show: canAccess('products') },
+    { id: 'staff', icon: Users, label: 'Nhân sự', show: canAccess('staff') },
+    { id: 'settings', icon: Settings, label: 'Cấu hình', show: canAccess('settings') },
+  ];
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden font-sans flex-col md:flex-row">
-      <aside className={`hidden md:flex flex-col bg-white border-r border-slate-200 transition-all duration-300 ${isSidebarOpen ? 'w-64' : 'w-20'} z-30`}>
-        <div className="p-6 flex items-center gap-3">
-          <div className="min-w-[32px] w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-black">AS</div>
-          {isSidebarOpen && <span className="font-black text-xl tracking-tight text-blue-900 uppercase truncate">Ánh Sáng</span>}
+    <div className="flex min-h-screen bg-slate-50 font-sans text-slate-900">
+      {/* Sidebar */}
+      <aside 
+        className={`fixed inset-y-0 left-0 z-40 bg-slate-900 text-white transition-all duration-300 ease-in-out ${isSidebarOpen ? 'w-72' : 'w-24'} hidden md:flex flex-col shadow-2xl`}
+      >
+        <div className={`p-8 flex items-center ${isSidebarOpen ? 'justify-between' : 'justify-center'}`}>
+          {isSidebarOpen ? (
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center font-black text-lg shadow-lg shadow-blue-500/30">AS</div>
+              <div>
+                <h1 className="font-black text-lg tracking-tight uppercase leading-none">Ánh Sáng</h1>
+                <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Studio Manager</span>
+              </div>
+            </div>
+          ) : (
+            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center font-black text-lg shadow-lg">AS</div>
+          )}
         </div>
 
-        <nav className="flex-1 px-4 py-2 space-y-1 overflow-y-auto scrollbar-hide">
-          {permittedNavItems.map((item) => (
-            <button key={item.id} onClick={() => setActiveTab(item.id)} className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all ${activeTab === item.id ? 'bg-blue-50 text-blue-600 font-bold shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>
-              <item.icon className="w-5 h-5" />
-              {isSidebarOpen && <span className="text-sm truncate">{item.fullLabel}</span>}
+        <nav className="flex-1 px-4 space-y-2 py-4">
+          {menuItems.filter(i => i.show).map(item => (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id)}
+              className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all duration-200 group relative ${activeTab === item.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}
+            >
+              <item.icon size={20} className={activeTab === item.id ? 'animate-pulse' : ''} />
+              {isSidebarOpen && <span className="font-bold text-xs uppercase tracking-wide">{item.label}</span>}
+              {!isSidebarOpen && (
+                <div className="absolute left-full ml-4 px-3 py-2 bg-slate-800 text-white text-[10px] font-bold uppercase tracking-widest rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 shadow-xl">
+                  {item.label}
+                </div>
+              )}
             </button>
           ))}
         </nav>
 
-        <div className="p-4 border-t border-slate-100 space-y-4">
-           {isSidebarOpen && (
-             <div className={`p-4 rounded-2xl border transition-all ${syncStatus === 'offline' ? 'bg-orange-50 border-orange-100' : 'bg-emerald-50 border-emerald-100'}`}>
-                <div className="flex items-center gap-3">
-                   {syncStatus === 'offline' ? <CloudOff size={18} className="text-orange-500" /> : <Cloud size={18} className="text-emerald-500" />}
-                   <div className="flex-1 min-w-0">
-                      <div className={`text-[9px] font-black uppercase truncate ${syncStatus === 'offline' ? 'text-orange-600' : 'text-emerald-600'}`}>
-                        {syncStatus === 'offline' ? 'Offline Mode' : 'Supabase Active'}
-                      </div>
-                   </div>
-                </div>
-             </div>
-           )}
-           <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="hidden md:flex w-full justify-center p-2 text-slate-300 hover:text-slate-600 transition-colors"><Menu size={20}/></button>
-           <button onClick={handleLogout} className={`w-full flex items-center gap-3 p-3 rounded-xl text-red-500 hover:bg-red-50 transition-all font-bold text-[10px] uppercase tracking-widest ${!isSidebarOpen && 'justify-center'}`}>
-              <LogOut size={18}/> {isSidebarOpen && "Đăng xuất"}
-           </button>
+        <div className="p-4 border-t border-white/5 space-y-2">
+          <button onClick={() => setShowAIAssistant(!showAIAssistant)} className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all ${showAIAssistant ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg' : 'bg-white/5 text-slate-300 hover:bg-white/10'}`}>
+             <MessageSquare size={20} />
+             {isSidebarOpen && <span className="font-bold text-xs uppercase tracking-wide">Trợ lý AI</span>}
+          </button>
+          <button onClick={handleLogout} className="w-full flex items-center gap-4 p-4 rounded-2xl text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-all">
+            <LogOut size={20} />
+            {isSidebarOpen && <span className="font-bold text-xs uppercase tracking-wide">Đăng xuất</span>}
+          </button>
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
-        <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shrink-0 sticky top-0 z-20">
-          <div className="flex items-center gap-4">
-             <div className="w-10 h-10 bg-slate-50 text-slate-400 rounded-xl flex items-center justify-center">
-                {currentTabInfo?.icon && React.createElement(currentTabInfo.icon, {size: 20})}
-             </div>
-             <h1 className="text-lg md:text-xl font-black text-slate-800 uppercase tracking-tight">{currentTabInfo?.fullLabel}</h1>
+      {/* Mobile Header */}
+      <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-slate-900 z-40 flex items-center justify-between px-4 shadow-xl">
+         <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center font-black text-white text-xs">AS</div>
+         <span className="font-black text-white text-sm uppercase tracking-widest">{menuItems.find(i => i.id === activeTab)?.label}</span>
+         <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="text-white"><Menu size={24}/></button>
+      </div>
+
+      {/* Main Content */}
+      <main className={`flex-1 transition-all duration-300 ease-in-out ${isSidebarOpen ? 'md:ml-72' : 'md:ml-24'} p-4 md:p-8 pt-20 md:pt-8 min-h-screen`}>
+        {/* Header Bar */}
+        <header className="flex justify-between items-center mb-10">
+          <div>
+            <h2 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight mb-1">
+              Xin chào, {currentUser.name.split(' ').pop()} 👋
+            </h2>
+            <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">{currentUser.role} • {studioInfo.name}</p>
           </div>
-          <div className="flex items-center gap-3">
-             <div className="text-right hidden sm:block">
-               <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{currentUser.role}</div>
-               <div className="text-sm font-black text-slate-900">{currentUser.name}</div>
-             </div>
-             <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-xl border border-blue-200 flex items-center justify-center font-black text-xs">
-               {currentUser.name.charAt(0)}
-             </div>
+          <div className="flex items-center gap-4">
+             <button className="w-12 h-12 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-blue-600 hover:shadow-lg transition-all relative">
+                <Bell size={20} />
+                <span className="absolute top-3 right-3 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
+             </button>
+             <button 
+               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+               className="hidden md:flex w-12 h-12 rounded-full bg-slate-900 text-white items-center justify-center hover:bg-blue-600 transition-all shadow-lg active:scale-95"
+             >
+               <Menu size={20} />
+             </button>
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-4 md:p-8 scrollbar-hide mobile-nav-padding">
-          <div className="max-w-7xl mx-auto w-full">
-            {activeTab === 'dashboard' && <Dashboard contracts={contracts} transactions={transactions} staff={staff} services={services} />}
+        {/* Dynamic Content */}
+        {isLoading ? (
+          <div className="flex items-center justify-center h-96">
+            <div className="flex flex-col items-center gap-4">
+              <Loader2 size={40} className="animate-spin text-blue-600" />
+              <p className="text-slate-400 font-bold text-xs uppercase tracking-widest">Đang tải dữ liệu...</p>
+            </div>
+          </div>
+        ) : (
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+            {activeTab === 'dashboard' && (
+              <Dashboard 
+                contracts={contracts} 
+                transactions={transactions} 
+                staff={staff}
+                services={services}
+              />
+            )}
             {activeTab === 'contracts' && (
               <ContractManager 
                 contracts={contracts} setContracts={setContracts} 
@@ -334,72 +311,60 @@ const App: React.FC = () => {
                 transactions={transactions} setTransactions={setTransactions}
                 services={services} staff={staff} scheduleTypes={scheduleTypes} setScheduleTypes={setScheduleTypes}
                 studioInfo={studioInfo}
+                currentUser={currentUser}
               />
             )}
             {activeTab === 'finance' && (
               <ExpenseManager 
-                transactions={transactions} setTransactions={setTransactions} 
-                contracts={contracts} customers={customers} staff={staff}
-                expenseCategories={Object.values(ExpenseCategory)} setExpenseCategories={() => {}} 
+                transactions={transactions} setTransactions={setTransactions}
+                contracts={contracts}
+                customers={customers}
+                staff={staff}
+                expenseCategories={expenseCategories}
+                setExpenseCategories={setExpenseCategories}
                 currentUser={currentUser}
               />
             )}
-            {activeTab === 'staff' && <StaffManager staff={staff} setStaff={setStaff} schedules={schedules} />}
-            {activeTab === 'products' && <ProductManager services={services} setServices={setServices} departments={DEFAULT_DEPARTMENTS} setDepartments={() => {}} />}
-            {activeTab === 'schedules' && <ScheduleManager contracts={contracts} staff={staff} scheduleTypes={scheduleTypes} schedules={schedules} />}
-            {activeTab === 'settings' && <StudioSettings studioInfo={studioInfo} setStudioInfo={setStudioInfo} />}
-          </div>
-        </div>
-
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-2 py-3 flex justify-around items-center z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
-          {permittedNavItems.slice(0, 4).map(item => (
-            <button 
-              key={item.id} onClick={() => setActiveTab(item.id)}
-              className={`flex flex-col items-center gap-1 flex-1 py-1 transition-all ${activeTab === item.id ? 'text-blue-600' : 'text-slate-300'}`}
-            >
-              <item.icon size={22} className={activeTab === item.id ? 'scale-110 transition-transform' : ''} />
-              <span className="text-[9px] font-black uppercase tracking-tighter">{item.label}</span>
-            </button>
-          ))}
-          <button onClick={() => setShowMobileMore(true)} className="flex flex-col items-center gap-1 flex-1 py-1 text-slate-300">
-            <MoreHorizontal size={22} />
-            <span className="text-[9px] font-black uppercase tracking-tighter">Thêm</span>
-          </button>
-        </nav>
-
-        {showMobileMore && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-end animate-in" onClick={() => setShowMobileMore(false)}>
-            <div className="bg-white w-full rounded-t-[3rem] p-8 space-y-6 animate-in slide-in-from-bottom" onClick={e => e.stopPropagation()}>
-              <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-4"></div>
-              <h3 className="text-center font-black text-slate-400 uppercase text-[10px] tracking-[0.2em]">Danh mục mở rộng</h3>
-              <div className="grid grid-cols-3 gap-4">
-                {permittedNavItems.map(item => (
-                  <button 
-                    key={item.id} onClick={() => { setActiveTab(item.id); setShowMobileMore(false); }}
-                    className={`flex flex-col items-center gap-3 p-4 rounded-[2rem] transition-all ${activeTab === item.id ? 'bg-blue-600 text-white shadow-xl shadow-blue-500/30' : 'bg-slate-50 text-slate-500 active:bg-slate-100'}`}
-                  >
-                    <item.icon size={24} />
-                    <span className="text-[10px] font-black uppercase tracking-tight">{item.label}</span>
-                  </button>
-                ))}
-              </div>
-              <button onClick={handleLogout} className="w-full py-5 bg-red-50 text-red-500 rounded-3xl font-black uppercase text-xs tracking-widest mt-4">Đăng xuất hệ thống</button>
-            </div>
-          </div>
-        )}
-
-        {canUseAI && (
-          <button onClick={() => setShowAssistant(!showAssistant)} className="fixed bottom-24 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all z-40 md:bottom-8 md:right-8">
-            <MessageSquare />
-          </button>
-        )}
-
-        {showAssistant && canUseAI && (
-          <div className="fixed inset-0 bg-white z-[150] md:inset-auto md:bottom-24 md:right-8 md:w-[400px] md:h-[550px] md:rounded-[2.5rem] md:shadow-2xl overflow-hidden md:border md:border-slate-200 animate-in">
-            <AIAssistant onClose={() => setShowAssistant(false)} context={{ contracts, transactions, staff, services }} />
+            {activeTab === 'schedule' && (
+              <ScheduleManager 
+                contracts={contracts}
+                staff={staff}
+                scheduleTypes={scheduleTypes}
+                schedules={schedules}
+              />
+            )}
+            {activeTab === 'products' && (
+              <ProductManager 
+                services={services} setServices={setServices}
+                departments={departments} setDepartments={setDepartments}
+              />
+            )}
+            {activeTab === 'staff' && (
+              <StaffManager 
+                staff={staff} setStaff={setStaff}
+                schedules={schedules}
+              />
+            )}
+            {activeTab === 'settings' && (
+              <StudioSettings studioInfo={studioInfo} setStudioInfo={setStudioInfo} />
+            )}
           </div>
         )}
       </main>
+
+      {/* AI Assistant Overlay */}
+      {showAIAssistant && (
+        <div className="fixed bottom-6 right-6 w-96 h-[600px] z-50 shadow-2xl rounded-3xl overflow-hidden animate-in slide-in-from-right-10 border border-white/20">
+          <AIAssistant 
+            onClose={() => setShowAIAssistant(false)} 
+            context={{
+              contracts: contracts.length,
+              revenue: transactions.filter(t => t.type === TransactionType.INCOME).reduce((sum, t) => sum + t.amount, 0),
+              staff: staff.length
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 };

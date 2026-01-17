@@ -1,5 +1,4 @@
 
-// @google/genai guidelines: Fixed property access errors in handleSaveContract and corrected JSX syntax errors in payment method selection.
 import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Search, X, Trash2, Calendar as CalIcon, User, CreditCard, Package, Settings, AlignLeft, MapPin, CalendarDays, AlertCircle, Loader2, CheckCircle2, History, Banknote, ArrowRight, CloudOff, Printer, ExternalLink, FileText, Briefcase, Wallet, Info, Tag, Edit3, UserPlus, Clock, Check } from 'lucide-react';
 import { Contract, ContractStatus, Service, Customer, Staff, ContractItem, ServiceType, Transaction, TransactionType, StudioInfo, Schedule } from '../types';
@@ -18,12 +17,13 @@ interface Props {
   scheduleTypes: string[];
   setScheduleTypes: React.Dispatch<React.SetStateAction<string[]>>;
   studioInfo: StudioInfo;
+  currentUser: Staff | null;
 }
 
 const ContractManager: React.FC<Props> = ({ 
   contracts, setContracts, customers, setCustomers, 
   transactions, setTransactions, services, staff, scheduleTypes, setScheduleTypes,
-  studioInfo
+  studioInfo, currentUser
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [filter, setFilter] = useState('');
@@ -93,17 +93,18 @@ const ContractManager: React.FC<Props> = ({
       const timestamp = new Date().getTime().toString().substr(-4);
       setForm(prev => ({
         ...prev,
-        contractCode: `AS-${new Date().getFullYear()}-${timestamp}`
+        contractCode: `AS-${new Date().getFullYear()}-${timestamp}`,
+        staffInChargeId: currentUser?.id || ''
       }));
       setNewPayment({
         amount: 0,
         method: 'Chuyển khoản',
         stage: 'Đặt cọc',
         date: getTodayISO(),
-        staffId: ''
+        staffId: currentUser?.id || ''
       });
     }
-  }, [isModalOpen, editingContractId]);
+  }, [isModalOpen, editingContractId, currentUser]);
 
   const handleOpenEdit = (contract: Contract) => {
     const customer = customers.find(c => c.id === contract.customerId);
@@ -278,19 +279,24 @@ const ContractManager: React.FC<Props> = ({
         customerObj = { id: customerId, name: form.customerName, phone: form.customerPhone, address: form.customerAddress };
         setCustomers(prev => [...prev, customerObj]);
       }
-      // CRITICAL FIX: Thêm await để đảm bảo khách hàng tồn tại trong DB trước khi lưu Hợp đồng tham chiếu tới nó
+      
       await syncData('Customers', existingCust ? 'UPDATE' : 'CREATE', customerObj);
 
       // 2. Xử lý lưu Hợp đồng
       const contractId = editingContractId || 'con-' + Math.random().toString(36).substr(2, 9);
+      
+      // FIX: Sử dụng ID nhân viên thực tế thay vì hardcode string "staff"
+      // Ưu tiên: currentUser.id -> staff[0].id (fallback) -> null
+      const creatorId = currentUser?.id || (staff.length > 0 ? staff[0].id : undefined);
+
       const finalContract: Contract = {
         ...form,
         id: contractId,
         customerId: customerId,
-        createdBy: 'staff' // Cần cập nhật logic lấy user thật sau
+        createdBy: creatorId
       } as Contract;
 
-      // Cập nhật State UI trước để cảm giác nhanh (Optimistic UI)
+      // Cập nhật State UI trước (Optimistic UI)
       if (editingContractId) {
         setContracts(prev => prev.map(c => c.id === editingContractId ? finalContract : c));
       } else {
@@ -327,12 +333,11 @@ const ContractManager: React.FC<Props> = ({
           date: form.date,
           contractId: contractId,
           vendor: form.paymentMethod,
-          staffId: form.staffInChargeId
+          staffId: form.staffInChargeId || creatorId
         };
         const collector = staff.find(s => s.id === form.staffInChargeId);
         setTransactions(prev => [txObj, ...prev]);
         
-        // Không cần await transaction vì nó độc lập, lỗi transaction không nên chặn đóng modal
         syncData('Transactions', 'CREATE', {
             ...txObj,
             contractCode: form.contractCode,
@@ -344,9 +349,10 @@ const ContractManager: React.FC<Props> = ({
     } catch (err: any) {
       console.error("Lưu hợp đồng thất bại:", err);
       let errorMessage = "Đã có lỗi xảy ra. Dữ liệu có thể chưa được đồng bộ Cloud.";
-      // Hiển thị lỗi rõ hơn nếu liên quan đến Foreign Key
-      if (err.message && err.message.includes("foreign key constraint")) {
-         errorMessage = "Lỗi dữ liệu liên kết (Khách hàng/Nhân viên). Vui lòng thử lại.";
+      if (err.message && (err.message.includes("foreign key constraint") || err.message.includes("Key is not present"))) {
+         errorMessage = "Lỗi dữ liệu: Tài khoản nhân viên tạo hợp đồng không hợp lệ trong hệ thống.";
+      } else if (err.message && err.message.includes("duplicate key")) {
+         errorMessage = "Lỗi: Mã hợp đồng đã tồn tại. Vui lòng thử lại.";
       }
       setFormError(errorMessage);
     } finally {
