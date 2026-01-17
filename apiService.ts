@@ -1,11 +1,21 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.1';
 import { Service, Transaction, Staff, Contract, Schedule, Customer, Rule, RuleViolation, SalaryPeriod, SalarySlip, SalaryItem, StudioInfo } from './types';
 
+// Helper to get Env Vars across different frameworks (Vite, Next, Create-React-App)
+const getEnv = (key: string) => {
+  // @ts-ignore
+  if (typeof process !== 'undefined' && process.env && process.env[key]) return process.env[key];
+  // @ts-ignore
+  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[key]) return import.meta.env[key];
+  return '';
+};
+
 // Supabase Configuration
-const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || '';
-const supabaseKey = process.env.REACT_APP_SUPABASE_ANON_KEY || '';
-export const isConfigured = supabaseUrl !== '' && supabaseKey !== '';
+// Try standard REACT_APP_ first, then VITE_, then generic
+const supabaseUrl = getEnv('REACT_APP_SUPABASE_URL') || getEnv('VITE_SUPABASE_URL') || getEnv('SUPABASE_URL');
+const supabaseKey = getEnv('REACT_APP_SUPABASE_ANON_KEY') || getEnv('VITE_SUPABASE_ANON_KEY') || getEnv('SUPABASE_ANON_KEY');
+
+export const isConfigured = !!supabaseUrl && !!supabaseKey;
 export const supabase = isConfigured ? createClient(supabaseUrl, supabaseKey) : null;
 
 // Helpers
@@ -22,7 +32,17 @@ const deleteBy = async (table: string, col: string, val: any) => {
   if (error) throw error;
 };
 
-// ... (Giữ nguyên checkServiceCodeExists, getNextServiceCode, uploadTransactionImage) ...
+// --- GENERIC FETCH FUNCTION ---
+export const fetchCollection = async (table: string) => {
+  if (!isConfigured || !supabase) return [];
+  const { data, error } = await supabase.from(table).select('*').order('created_at', { ascending: false }).limit(1000); // Default limit for safety
+  if (error) {
+    console.error(`Error fetching ${table}:`, error);
+    return [];
+  }
+  return data;
+};
+
 export const checkServiceCodeExists = async (code: string) => {
   if (!supabase) return false;
   const { data } = await supabase.from('services').select('ma_dv').eq('ma_dv', code).maybeSingle();
@@ -30,7 +50,7 @@ export const checkServiceCodeExists = async (code: string) => {
 };
 
 export const getNextServiceCode = async () => {
-  if (!supabase) return `DV-${Date.now()}`;
+  // Simple timestamp based code gen if not connected to DB logic
   return `DV-${Date.now()}`;
 };
 
@@ -47,7 +67,7 @@ export const uploadTransactionImage = async (file: File, metadata: any) => {
   }
 };
 
-// ... (Giữ nguyên các hàm mapper cũ) ...
+// --- MAPPERS ---
 // Rule
 const ruleToDb = (r: Partial<Rule>) => ({
   id: r.id,
@@ -153,7 +173,6 @@ const salaryItemFromDb = (r: any): SalaryItem => ({
   referenceId: r.reference_id
 });
 
-// ... (Giữ nguyên fetchRulesData, fetchSalaryData) ...
 export const fetchRulesData = async () => {
   if (!isConfigured || !supabase) return { rules: [], violations: [] };
   
@@ -197,7 +216,6 @@ export const fetchSalaryData = async (staffId?: string) => {
   };
 };
 
-// HÀM MỚI: Fetch Settings
 export const fetchSettings = async () => {
   if (!isConfigured || !supabase) return null;
   const { data } = await supabase.from('settings').select('value').eq('id', 'studio_info').maybeSingle();
@@ -205,7 +223,10 @@ export const fetchSettings = async () => {
 };
 
 export const syncData = async (table: string, action: 'CREATE' | 'UPDATE' | 'DELETE', rawData: any) => {
-  if (!isConfigured || !supabase) return { success: true, simulated: true, data: rawData };
+  if (!isConfigured || !supabase) {
+    console.warn("Supabase not configured. Operation simulated:", action, table);
+    return { success: true, simulated: true, data: rawData };
+  }
 
   let tableName = table.toLowerCase();
   
@@ -256,11 +277,7 @@ export const syncData = async (table: string, action: 'CREATE' | 'UPDATE' | 'DEL
     return { success: true, data: salaryItemFromDb(data) };
   }
 
-  // Handle Default Types (Service, Staff, etc. - assume existing mappers in main code or direct mapping if simple)
-  // Lưu ý: Trong code gốc có các hàm serviceToDb, staffToDb,... 
-  // Ở đây tôi giữ nguyên logic 'upsertOne' gọi trực tiếp nếu chưa có mapper ở trên 
-  // để đảm bảo tương thích code cũ.
-  
+  // Handle Default Types
   const data = await upsertOne(tableName, rawData);
   return { success: true, data };
 };

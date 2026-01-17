@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, FileText, DollarSign, Calendar, Package, Users, Settings, 
@@ -18,7 +17,7 @@ import SalaryManager from './components/SalaryManager';
 
 import { Staff, StudioInfo } from './types';
 import { mockStaff, mockContracts, mockCustomers, mockTransactions, mockServices } from './mockData';
-import { fetchSettings } from './apiService'; // Import mới
+import { fetchSettings, fetchCollection, isConfigured } from './apiService';
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -50,18 +49,49 @@ function App() {
 
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isDataLoading, setIsDataLoading] = useState(false);
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
 
-  // LOAD SETTINGS TỪ DB KHI APP START
+  // LOAD DATA TỪ DB KHI APP START
   useEffect(() => {
-    const loadSettings = async () => {
-      const savedInfo = await fetchSettings();
-      if (savedInfo) {
-        setStudioInfo(savedInfo);
+    const loadAllData = async () => {
+      if (!isConfigured) return;
+      
+      setIsDataLoading(true);
+      try {
+        const [
+          fetchedSettings,
+          fetchedContracts,
+          fetchedCustomers,
+          fetchedServices,
+          fetchedStaff,
+          fetchedTransactions
+        ] = await Promise.all([
+           fetchSettings(),
+           fetchCollection('contracts'),
+           fetchCollection('customers'),
+           fetchCollection('services'),
+           fetchCollection('staff'),
+           fetchCollection('transactions')
+        ]);
+
+        if (fetchedSettings) setStudioInfo(fetchedSettings);
+        if (fetchedContracts && fetchedContracts.length > 0) setContracts(fetchedContracts);
+        if (fetchedCustomers && fetchedCustomers.length > 0) setCustomers(fetchedCustomers);
+        if (fetchedServices && fetchedServices.length > 0) setServices(fetchedServices);
+        if (fetchedStaff && fetchedStaff.length > 0) setStaff(fetchedStaff);
+        if (fetchedTransactions && fetchedTransactions.length > 0) setTransactions(fetchedTransactions);
+
+        console.log("Data loaded from Supabase");
+      } catch (e) {
+        console.error("Error loading data from Supabase", e);
+      } finally {
+        setIsDataLoading(false);
       }
     };
-    loadSettings();
+
+    loadAllData();
   }, []);
 
   const handleLogin = (e: React.FormEvent) => {
@@ -113,7 +143,6 @@ function App() {
   ];
 
   if (!currentUser) {
-    // ... (Giữ nguyên UI Login) ...
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4 font-sans">
         <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl w-full max-w-md border border-slate-200">
@@ -148,10 +177,10 @@ function App() {
               </div>
               <button 
                 type="submit" 
-                disabled={isLoading}
+                disabled={isLoading || isDataLoading}
                 className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue-600 transition-all shadow-xl active:scale-95 disabled:opacity-70 disabled:active:scale-100"
               >
-                {isLoading ? 'Đang xác thực...' : 'Đăng nhập hệ thống'}
+                {isLoading ? 'Đang xác thực...' : (isDataLoading ? 'Đang tải dữ liệu...' : 'Đăng nhập hệ thống')}
               </button>
            </form>
            <div className="mt-8 text-center text-[10px] text-slate-300 font-bold uppercase">
@@ -163,7 +192,6 @@ function App() {
   }
 
   return (
-    // ... (Giữ nguyên UI chính của App) ...
     <div className="flex h-screen bg-slate-50 font-sans overflow-hidden">
       {/* Sidebar */}
       <div className="w-72 bg-white border-r border-slate-200 flex flex-col shrink-0 z-20 hidden md:flex">
@@ -222,6 +250,7 @@ function App() {
             
             <div className="flex items-center gap-2 text-slate-400 md:flex">
                <span className="text-xs font-bold uppercase tracking-widest">{new Date().toLocaleDateString('vi-VN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+               {isDataLoading && <span className="text-xs font-bold text-blue-600 flex items-center gap-1"><Sparkles size={10} className="animate-spin"/> Syncing...</span>}
             </div>
 
             <div className="flex items-center gap-4">
@@ -278,14 +307,14 @@ function App() {
                 <ProductManager 
                   services={services} setServices={setServices}
                   departments={departments} setDepartments={setDepartments}
-                  currentUser={currentUser} // Truyền User để check quyền
+                  currentUser={currentUser}
                 />
               )}
               {activeTab === 'staff' && (
                 <StaffManager 
                   staff={staff} setStaff={setStaff}
                   schedules={contracts.flatMap(c => c.schedules)}
-                  currentUser={currentUser} // Truyền User để check quyền
+                  currentUser={currentUser}
                 />
               )}
               {activeTab === 'rules' && (
@@ -297,7 +326,7 @@ function App() {
               {activeTab === 'settings' && (
                 <StudioSettings 
                   studioInfo={studioInfo} setStudioInfo={setStudioInfo}
-                  currentUser={currentUser} // Truyền User để check quyền
+                  currentUser={currentUser}
                 />
               )}
             </div>
