@@ -25,12 +25,18 @@ export default async function handler(req, res) {
       });
     });
 
-    const file = data.files.file?.[0] || data.files.file;
+    // Handle array or single object for file (Formidable v3)
+    const file = Array.isArray(data.files.file) ? data.files.file[0] : data.files.file;
     if (!file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    const metadata = JSON.parse(data.fields.metadata || '{}');
+    // Handle array or single string for fields (Formidable v3)
+    const metadataRaw = Array.isArray(data.fields.metadata) 
+      ? data.fields.metadata[0] 
+      : data.fields.metadata;
+    const metadata = JSON.parse(metadataRaw || '{}');
+
     // Format tên file: CHI_<HangMuc>_<Time>_<NguoiChi>
     const fileName = `CHI_${metadata.category || 'General'}_${metadata.timestamp}_${metadata.staffName || 'Staff'}`
       .replace(/[^a-zA-Z0-9._-]/g, '_'); // Sanitize filename
@@ -85,6 +91,7 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('Drive Upload Error:', error);
+    // Trả về error.message để frontend hiển thị
     return res.status(500).json({ 
       success: false, 
       error: error.message || 'Internal Server Error' 

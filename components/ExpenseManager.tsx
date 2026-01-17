@@ -237,9 +237,10 @@ const ExpenseManager: React.FC<Props> = ({
           if (uploadRes.success && uploadRes.url) {
             finalBillUrl = uploadRes.url;
           }
-        } catch (uploadErr) {
+        } catch (uploadErr: any) {
           console.error("Upload failed", uploadErr);
-          alert("Lỗi upload ảnh lên Google Drive. Giao dịch sẽ được lưu nhưng không có ảnh.");
+          // NEW: Show specific error message from backend
+          alert(`Lỗi upload ảnh lên Google Drive: ${uploadErr.message || 'Không rõ'}. Giao dịch sẽ được lưu nhưng không có ảnh.`);
           finalBillUrl = ''; // Hoặc giữ nguyên nếu muốn retry, ở đây ta chấp nhận lưu không ảnh
         } finally {
           setIsUploading(false);
