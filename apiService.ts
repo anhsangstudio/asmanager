@@ -1,3 +1,4 @@
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.1';
 import { Service, Transaction, Staff, Contract, Schedule, Customer } from './types';
 
@@ -158,7 +159,7 @@ const contractToDb = (c: Partial<Contract>) => ({
   id: c.id,
   contract_code: c.contractCode,
   customer_id: c.customerId, // ✅ snake_case
-  staff_in_charge_id: c.staffInChargeId ?? null,
+  staff_in_charge_id: c.staffInChargeId || null, // Convert empty string to null
   contract_date: asDateOnly(c.date),
 
   status: c.status,
@@ -169,7 +170,7 @@ const contractToDb = (c: Partial<Contract>) => ({
   payment_method: c.paymentMethod ?? '',
   payment_stage: c.paymentStage ?? null,
   terms: c.terms ?? null,
-  created_by: c.createdBy ?? null,
+  created_by: c.createdBy || null, // Convert empty string to null
 });
 
 const contractFromDb = (r: any): Contract => ({
@@ -248,9 +249,9 @@ const transactionToDb = (t: Partial<Transaction>) => ({
   description: t.description ?? '',
   transaction_date: asDateOnly(t.date),
 
-  contract_id: t.contractId ?? null,
+  contract_id: t.contractId || null, // Convert empty string to null
   vendor: t.vendor ?? null,
-  staff_id: t.staffId ?? null,
+  staff_id: t.staffId || null, // Convert empty string to null
   bill_image_url: t.billImageUrl ?? null,
 });
 

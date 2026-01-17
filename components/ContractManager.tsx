@@ -1,5 +1,4 @@
 
-// @google/genai guidelines: Fixed property access errors in handleSaveContract and corrected JSX syntax errors in payment method selection.
 import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Search, X, Trash2, Calendar as CalIcon, User, CreditCard, Package, Settings, AlignLeft, MapPin, CalendarDays, AlertCircle, Loader2, CheckCircle2, History, Banknote, ArrowRight, CloudOff, Printer, ExternalLink, FileText, Briefcase, Wallet, Info, Tag, Edit3, UserPlus, Clock, Check } from 'lucide-react';
 import { Contract, ContractStatus, Service, Customer, Staff, ContractItem, ServiceType, Transaction, TransactionType, StudioInfo, Schedule } from '../types';
@@ -141,7 +140,7 @@ const ContractManager: React.FC<Props> = ({
       method: contract.paymentMethod || 'Chuyển khoản',
       stage: nextStage,
       date: getTodayISO(),
-      staffId: ''
+      staffId: currentUser?.id || '' // Default to current user to prevent empty string
     });
     setEditingTxInHistoryId(null);
     setFormError(null);
@@ -212,7 +211,7 @@ const ContractManager: React.FC<Props> = ({
           date: newPayment.date,
           contractId: editingContractId,
           vendor: newPayment.method,
-          staffId: newPayment.staffId 
+          staffId: newPayment.staffId || currentUser?.id 
         };
 
         setTransactions(prev => [txObj, ...prev]);
@@ -234,7 +233,7 @@ const ContractManager: React.FC<Props> = ({
         method: 'Chuyển khoản',
         stage: nextStage,
         date: getTodayISO(),
-        staffId: ''
+        staffId: currentUser?.id || ''
       });
     } catch (err) {
       setFormError("Gặp lỗi khi xử lý thanh toán.");
