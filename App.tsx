@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   LayoutDashboard, FileText, DollarSign, Calendar, Package, 
   Users, Settings, LogOut, MessageSquare, Menu, Bell, Loader2, Key
@@ -63,6 +64,63 @@ const App: React.FC = () => {
 4. Studio chịu trách nhiệm lưu trữ file gốc trong vòng 6 tháng.`
   });
 
+  // --- ACCESS CONTROL LOGIC ---
+  // Rule: Chỉ Admin hoặc Giám đốc mới có quyền truy cập module nhạy cảm (AI, Dashboard)
+  const isDirectorOrAdmin = useMemo(() => {
+    if (!currentUser) return false;
+    return currentUser.username === 'admin' || currentUser.role === 'Giám đốc';
+  }, [currentUser]);
+
+  // Check permissions helper
+  const canAccess = (module: string) => {
+    if (!currentUser) return false;
+    const perms = currentUser.permissions?.[module];
+    if (!perms) return false;
+    // Check if any submodule has view access
+    return Object.values(perms).some((p: any) => p.view);
+  };
+
+  // Menu Definition with Strict Rules
+  const menuItems = [
+    // Override Dashboard permission: STRICTLY for Admin/Director
+    { id: 'dashboard', icon: LayoutDashboard, label: 'Tổng quan', show: isDirectorOrAdmin }, 
+    { id: 'contracts', icon: FileText, label: 'Hợp đồng', show: canAccess('contracts') },
+    { id: 'finance', icon: DollarSign, label: 'Thu & Chi', show: canAccess('finance') },
+    { id: 'schedule', icon: Calendar, label: 'Lịch làm việc', show: canAccess('schedules') },
+    { id: 'products', icon: Package, label: 'Dịch vụ', show: canAccess('products') },
+    { id: 'staff', icon: Users, label: 'Nhân sự', show: canAccess('staff') },
+    { id: 'settings', icon: Settings, label: 'Cấu hình', show: canAccess('settings') },
+  ];
+
+  // Route Guard & Redirect Logic
+  useEffect(() => {
+    if (currentUser) {
+      // 1. Guard AI Assistant
+      if (showAIAssistant && !isDirectorOrAdmin) {
+        console.warn('Security: Closing unauthorized AI Assistant access');
+        setShowAIAssistant(false);
+      }
+
+      // 2. Guard Active Tab (Dashboard)
+      // Kiểm tra xem tab hiện tại có được phép hiển thị hay không
+      const currentItem = menuItems.find(i => i.id === activeTab);
+      
+      // Nếu không tìm thấy item hoặc item bị ẩn (show = false)
+      if (!currentItem || !currentItem.show) {
+        console.warn(`Security: Redirecting from unauthorized tab '${activeTab}'`);
+        
+        // Tìm tab hợp lệ đầu tiên để redirect
+        const firstValidTab = menuItems.find(i => i.show);
+        if (firstValidTab) {
+          setActiveTab(firstValidTab.id);
+        } else {
+          // Trường hợp cực đoan: không có quyền gì cả
+          setActiveTab('unauthorized'); 
+        }
+      }
+    }
+  }, [currentUser, activeTab, isDirectorOrAdmin, showAIAssistant]); // Dependencies ensure this runs on user change or tab change
+
   useEffect(() => {
     const initData = async () => {
       setIsLoading(true);
@@ -115,6 +173,8 @@ const App: React.FC = () => {
       const res = await login(username, password);
       if (res.success && res.user) {
         setCurrentUser(res.user);
+        // Reset active tab logic happens in useEffect, but we can hint default here
+        // Note: We don't set activeTab here directly to allow the Effect to handle permissions logic centrally
       } else {
         setLoginError(res.error || 'Đăng nhập thất bại');
       }
@@ -129,15 +189,8 @@ const App: React.FC = () => {
     setCurrentUser(null);
     setUsername('');
     setPassword('');
-  };
-
-  // Check permissions helper
-  const canAccess = (module: string) => {
-    if (!currentUser) return false;
-    const perms = currentUser.permissions?.[module];
-    if (!perms) return false;
-    // Check if any submodule has view access
-    return Object.values(perms).some((p: any) => p.view);
+    setActiveTab('dashboard'); // Reset to default
+    setShowAIAssistant(false);
   };
 
   if (!currentUser) {
@@ -195,16 +248,6 @@ const App: React.FC = () => {
     );
   }
 
-  const menuItems = [
-    { id: 'dashboard', icon: LayoutDashboard, label: 'Tổng quan', show: canAccess('dashboard') },
-    { id: 'contracts', icon: FileText, label: 'Hợp đồng', show: canAccess('contracts') },
-    { id: 'finance', icon: DollarSign, label: 'Thu & Chi', show: canAccess('finance') },
-    { id: 'schedule', icon: Calendar, label: 'Lịch làm việc', show: canAccess('schedules') },
-    { id: 'products', icon: Package, label: 'Dịch vụ', show: canAccess('products') },
-    { id: 'staff', icon: Users, label: 'Nhân sự', show: canAccess('staff') },
-    { id: 'settings', icon: Settings, label: 'Cấu hình', show: canAccess('settings') },
-  ];
-
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans text-slate-900">
       {/* Sidebar */}
@@ -244,10 +287,13 @@ const App: React.FC = () => {
         </nav>
 
         <div className="p-4 border-t border-white/5 space-y-2">
-          <button onClick={() => setShowAIAssistant(!showAIAssistant)} className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all ${showAIAssistant ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg' : 'bg-white/5 text-slate-300 hover:bg-white/10'}`}>
-             <MessageSquare size={20} />
-             {isSidebarOpen && <span className="font-bold text-xs uppercase tracking-wide">Trợ lý AI</span>}
-          </button>
+          {/* Strictly restrict AI Assistant Button */}
+          {isDirectorOrAdmin && (
+            <button onClick={() => setShowAIAssistant(!showAIAssistant)} className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all ${showAIAssistant ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg' : 'bg-white/5 text-slate-300 hover:bg-white/10'}`}>
+               <MessageSquare size={20} />
+               {isSidebarOpen && <span className="font-bold text-xs uppercase tracking-wide">Trợ lý AI</span>}
+            </button>
+          )}
           <button onClick={handleLogout} className="w-full flex items-center gap-4 p-4 rounded-2xl text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-all">
             <LogOut size={20} />
             {isSidebarOpen && <span className="font-bold text-xs uppercase tracking-wide">Đăng xuất</span>}
@@ -296,7 +342,8 @@ const App: React.FC = () => {
           </div>
         ) : (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {activeTab === 'dashboard' && (
+            {/* RENDER GUARD: Prevent flash of unprivileged content */}
+            {activeTab === 'dashboard' && isDirectorOrAdmin && (
               <Dashboard 
                 contracts={contracts} 
                 transactions={transactions} 
@@ -304,7 +351,7 @@ const App: React.FC = () => {
                 services={services}
               />
             )}
-            {activeTab === 'contracts' && (
+            {activeTab === 'contracts' && canAccess('contracts') && (
               <ContractManager 
                 contracts={contracts} setContracts={setContracts} 
                 customers={customers} setCustomers={setCustomers}
@@ -314,7 +361,7 @@ const App: React.FC = () => {
                 currentUser={currentUser}
               />
             )}
-            {activeTab === 'finance' && (
+            {activeTab === 'finance' && canAccess('finance') && (
               <ExpenseManager 
                 transactions={transactions} setTransactions={setTransactions}
                 contracts={contracts}
@@ -325,7 +372,7 @@ const App: React.FC = () => {
                 currentUser={currentUser}
               />
             )}
-            {activeTab === 'schedule' && (
+            {activeTab === 'schedule' && canAccess('schedules') && (
               <ScheduleManager 
                 contracts={contracts}
                 staff={staff}
@@ -333,27 +380,39 @@ const App: React.FC = () => {
                 schedules={schedules}
               />
             )}
-            {activeTab === 'products' && (
+            {activeTab === 'products' && canAccess('products') && (
               <ProductManager 
                 services={services} setServices={setServices}
                 departments={departments} setDepartments={setDepartments}
               />
             )}
-            {activeTab === 'staff' && (
+            {activeTab === 'staff' && canAccess('staff') && (
               <StaffManager 
                 staff={staff} setStaff={setStaff}
                 schedules={schedules}
               />
             )}
-            {activeTab === 'settings' && (
+            {activeTab === 'settings' && canAccess('settings') && (
               <StudioSettings studioInfo={studioInfo} setStudioInfo={setStudioInfo} />
+            )}
+            
+            {/* Fallback for unauthorized state (though effect should redirect) */}
+            {activeTab === 'unauthorized' && (
+              <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+                <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mb-4">
+                  <LogOut size={32} />
+                </div>
+                <h3 className="font-bold text-lg text-slate-600">Không có quyền truy cập</h3>
+                <p className="text-xs uppercase tracking-widest mt-1">Vui lòng liên hệ quản trị viên</p>
+              </div>
             )}
           </div>
         )}
       </main>
 
       {/* AI Assistant Overlay */}
-      {showAIAssistant && (
+      {/* Strictly restricted to Director/Admin */}
+      {showAIAssistant && isDirectorOrAdmin && (
         <div className="fixed bottom-6 right-6 w-96 h-[600px] z-50 shadow-2xl rounded-3xl overflow-hidden animate-in slide-in-from-right-10 border border-white/20">
           <AIAssistant 
             onClose={() => setShowAIAssistant(false)} 

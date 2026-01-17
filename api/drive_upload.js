@@ -64,22 +64,26 @@ export default async function handler(req, res) {
       body: fs.createReadStream(file.filepath),
     };
 
+    // Thêm supportsAllDrives: true để hỗ trợ upload vào Shared Drives (Team Drives)
     const uploadRes = await drive.files.create({
       requestBody: fileMetadata,
       media: media,
       fields: 'id, webViewLink',
+      supportsAllDrives: true, 
     });
 
     const fileId = uploadRes.data.id;
     const webViewLink = uploadRes.data.webViewLink;
 
     // 4. Set Permission (Anyone with link can view)
+    // Cũng cần supportsAllDrives: true ở đây
     await drive.permissions.create({
       fileId: fileId,
       requestBody: {
         role: 'reader',
         type: 'anyone',
       },
+      supportsAllDrives: true,
     });
 
     // 5. Return the link
@@ -91,7 +95,6 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('Drive Upload Error:', error);
-    // Trả về error.message để frontend hiển thị
     return res.status(500).json({ 
       success: false, 
       error: error.message || 'Internal Server Error' 
